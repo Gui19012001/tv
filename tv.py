@@ -114,29 +114,29 @@ def _load_table_paged(table_name: str, date_col="data_hora") -> pd.DataFrame:
         df = _parse_datahora(df, date_col)
     return df
 
-@st.cache_data(ttl=60)
+@st.cache_data(ttl=600)
 def carregar_apontamentos_esteira():
     # ✅ sua base "geral" (apontamentos) tem ESTEIRA/EIXO/MANGA/PNM no tipo_producao,
     # mas aqui vamos considerar como "ESTEIRA" o painel principal (antigo "geral").
     return _load_table_paged("apontamentos")
 
-@st.cache_data(ttl=60)
+@st.cache_data(ttl=600)
 def carregar_checklists_esteira():
     return _load_table_paged("checklists")
 
-@st.cache_data(ttl=60)
+@st.cache_data(ttl=600)
 def carregar_apontamentos_mola():
     return _load_table_paged("apontamentos_mola")
 
-@st.cache_data(ttl=60)
+@st.cache_data(ttl=600)
 def carregar_checklists_mola():
     return _load_table_paged("checklists_mola_detalhes")
 
-@st.cache_data(ttl=60)
+@st.cache_data(ttl=600)
 def carregar_apontamentos_manga_pnm():
     return _load_table_paged("apontamentos_manga_pnm")
 
-@st.cache_data(ttl=60)
+@st.cache_data(ttl=600)
 def carregar_checklists_manga_pnm():
     return _load_table_paged("checklists_manga_pnm_detalhes")
 
