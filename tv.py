@@ -584,7 +584,7 @@ def main():
     aplicar_css_app()
 
     if AUTORELOAD_AVAILABLE:
-        refresh_key = f"autorefresh_{Path(__file__).stem}"  # ex: autorefresh_tv
+        refresh_key = f"autorefresh_{Path(__file__).stem}_{inspect.currentframe().f_lineno}"
         st_autorefresh(interval=60000, key=refresh_key)
 
     hoje = datetime.datetime.now(TZ).date()
@@ -610,7 +610,6 @@ def main():
         unsafe_allow_html=True
     )
 
-    # ✅ 4 CARDS: ESTEIRA, MOLA, MANGA, PNM
     resumos = [
         resumo_esteira(data_inicio, data_fim),
         resumo_mola(data_inicio, data_fim),
