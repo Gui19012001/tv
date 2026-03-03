@@ -100,7 +100,7 @@ def _parse_datahora(df: pd.DataFrame, col: str = "data_hora") -> pd.DataFrame:
 def _load_table_paged(table_name: str, date_col="data_hora") -> pd.DataFrame:
     data_total = []
     inicio = 0
-    passo = 1000
+    passo = 300
     while True:
         resp = supabase.table(table_name).select("*").range(inicio, inicio + passo - 1).execute()
         dados = resp.data
