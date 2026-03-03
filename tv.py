@@ -7,8 +7,6 @@ import os
 from dotenv import load_dotenv
 from pathlib import Path
 import streamlit.components.v1 as components
-import inspect
-from pathlib import Path
 
 # ==============================
 # ✅ PAGE CONFIG
@@ -79,7 +77,7 @@ def aplicar_css_app():
     )
 
 # ==============================
-# ✅ Parser de data_hora robusto (corrige MOLA no "atual")
+# ✅ Parser de data_hora robusto
 # ==============================
 def _parse_datahora(df: pd.DataFrame, col: str = "data_hora") -> pd.DataFrame:
     if df is None or df.empty or col not in df.columns:
@@ -92,7 +90,7 @@ def _parse_datahora(df: pd.DataFrame, col: str = "data_hora") -> pd.DataFrame:
         df[col] = dt.dt.tz_convert(TZ)
         return df
 
-    # Se veio "naive" (sem tz), assume que foi gravado no horário local
+    # Se veio "naive" (sem tz), assume local
     df[col] = dt.dt.tz_localize(TZ)
     return df
 
@@ -103,6 +101,7 @@ def _load_table_paged(table_name: str, date_col="data_hora") -> pd.DataFrame:
     data_total = []
     inicio = 0
     passo = 1000
+
     while True:
         resp = supabase.table(table_name).select("*").range(inicio, inicio + passo - 1).execute()
         dados = resp.data
@@ -116,7 +115,7 @@ def _load_table_paged(table_name: str, date_col="data_hora") -> pd.DataFrame:
         df = _parse_datahora(df, date_col)
     return df
 
-# ✅ TTL maior (600s) pra não estourar consulta e ficar leve na TV
+# ✅ TTL maior (600s) pra não estourar consulta
 @st.cache_data(ttl=600)
 def carregar_apontamentos_esteira():
     return _load_table_paged("apontamentos")
@@ -153,6 +152,7 @@ def filtrar_periodo(df: pd.DataFrame, data_inicio: datetime.date, data_fim: date
 
 def calcular_meta_acumulada_por_hora(meta_hora: dict, hoje: datetime.date, hora_atual: datetime.datetime, modo="fim_hora") -> int:
     meta_acumulada = 0
+
     if modo == "inicio_hora":
         hora_atual_fechada = hora_atual.replace(minute=0, second=0, microsecond=0)
         for h, m in meta_hora.items():
@@ -168,6 +168,7 @@ def calcular_meta_acumulada_por_hora(meta_hora: dict, hoje: datetime.date, hora_
                 horario_fim = TZ.localize(horario_fim)
             if hora_atual >= horario_fim:
                 meta_acumulada += int(m)
+
     return int(meta_acumulada)
 
 def calcular_aprovacao(df_checks: pd.DataFrame, df_apont: pd.DataFrame) -> tuple[float, int]:
@@ -192,7 +193,6 @@ def calcular_aprovacao(df_checks: pd.DataFrame, df_apont: pd.DataFrame) -> tuple
         if "reinspecao" in checks.columns:
             teve_reinspecao = (checks["reinspecao"].astype(str).str.strip().str.lower() == "sim").any()
 
-        aprovado = True
         if "produto_reprovado" in checks.columns:
             ultimo = str(checks.tail(1).iloc[0].get("produto_reprovado", "Não")).strip().lower()
             aprovado = (ultimo == "não") and (not teve_reinspecao)
@@ -213,7 +213,7 @@ def calcular_oee(atraso: int, meta_acumulada: int, aprovacao_perc: float) -> flo
     return float(performance_fraction * quality_fraction * 100)
 
 # ==============================
-# Resumos (4 cards: Esteira, Mola, Manga, PNM)
+# Resumos (3 cards: Esteira, Mola, Manga & PNM)
 # ==============================
 def resumo_esteira(data_inicio: datetime.date, data_fim: datetime.date) -> dict:
     hoje = datetime.datetime.now(TZ).date()
@@ -285,18 +285,12 @@ def resumo_mola(data_inicio: datetime.date, data_fim: datetime.date) -> dict:
         "oee": oee
     }
 
-def resumo_manga(data_inicio: datetime.date, data_fim: datetime.date) -> dict:
+def resumo_manga_pnm(data_inicio: datetime.date, data_fim: datetime.date) -> dict:
     hoje = datetime.datetime.now(TZ).date()
     hora_atual = datetime.datetime.now(TZ)
 
     df_apont = filtrar_periodo(carregar_apontamentos_manga_pnm(), data_inicio, data_fim)
     df_checks = filtrar_periodo(carregar_checklists_manga_pnm(), data_inicio, data_fim)
-
-    # ✅ separa só MANGA (na base manga_pnm)
-    if not df_apont.empty and "tipo_producao" in df_apont.columns:
-        df_apont = df_apont[df_apont["tipo_producao"].astype(str).str.contains("MANGA", case=False, na=False)]
-    if not df_checks.empty and "tipo_producao" in df_checks.columns:
-        df_checks = df_checks[df_checks["tipo_producao"].astype(str).str.contains("MANGA", case=False, na=False)]
 
     meta_hora = {
         datetime.time(6, 0): 4, datetime.time(7, 0): 4, datetime.time(8, 0): 4,
@@ -312,62 +306,32 @@ def resumo_manga(data_inicio: datetime.date, data_fim: datetime.date) -> dict:
     aprov, insp = calcular_aprovacao(df_checks, df_apont)
     oee = calcular_oee(atraso, meta_acum, aprov)
 
-    return {
-        "key": "manga",
-        "nome": "MONTAGEM MANGA",
-        "total": total,
-        "aprovacao": aprov,
-        "inspecionado": insp,
-        "atraso": atraso,
-        "status": ("Dentro da Meta" if atraso == 0 else f"Atraso: {atraso}"),
-        "rodape": "",
-        "oee": oee
-    }
-
-def resumo_pnm(data_inicio: datetime.date, data_fim: datetime.date) -> dict:
-    hoje = datetime.datetime.now(TZ).date()
-    hora_atual = datetime.datetime.now(TZ)
-
-    df_apont = filtrar_periodo(carregar_apontamentos_manga_pnm(), data_inicio, data_fim)
-    df_checks = filtrar_periodo(carregar_checklists_manga_pnm(), data_inicio, data_fim)
-
-    # ✅ separa só PNM (na base manga_pnm)
+    # rodapé: contagem separada pra mostrar, mas sem separar card
+    total_manga = total_pnm = 0
     if not df_apont.empty and "tipo_producao" in df_apont.columns:
-        df_apont = df_apont[df_apont["tipo_producao"].astype(str).str.contains("PNM", case=False, na=False)]
-    if not df_checks.empty and "tipo_producao" in df_checks.columns:
-        df_checks = df_checks[df_checks["tipo_producao"].astype(str).str.contains("PNM", case=False, na=False)]
+        total_manga = int(df_apont["tipo_producao"].astype(str).str.contains("MANGA", case=False, na=False).sum())
+        total_pnm = int(df_apont["tipo_producao"].astype(str).str.contains("PNM", case=False, na=False).sum())
 
-    meta_hora = {
-        datetime.time(6, 0): 4, datetime.time(7, 0): 4, datetime.time(8, 0): 4,
-        datetime.time(9, 0): 4, datetime.time(10, 0): 4, datetime.time(11, 0): 0,
-        datetime.time(12, 0): 4, datetime.time(13, 0): 4, datetime.time(14, 0): 4,
-        datetime.time(15, 0): 4,
-    }
-
-    total = int(len(df_apont))
-    meta_acum = calcular_meta_acumulada_por_hora(meta_hora, hoje, hora_atual, modo="fim_hora")
-    atraso = int(max(meta_acum - total, 0))
-
-    aprov, insp = calcular_aprovacao(df_checks, df_apont)
-    oee = calcular_oee(atraso, meta_acum, aprov)
+    rodape = f"MANGA: {total_manga} | PNM: {total_pnm}" if (total_manga + total_pnm) > 0 else ""
 
     return {
-        "key": "pnm",
-        "nome": "MONTAGEM PNM",
+        "key": "manga_pnm",
+        "nome": "MONTAGEM MANGA & PNM",
         "total": total,
         "aprovacao": aprov,
         "inspecionado": insp,
         "atraso": atraso,
         "status": ("Dentro da Meta" if atraso == 0 else f"Atraso: {atraso}"),
-        "rodape": "",
+        "rodape": rodape,
         "oee": oee
     }
 
 # ==============================
-# ONEPAGE (1 iframe, 4 cards alinhados)
+# ONEPAGE (1 iframe, 3 cards alinhados)
 # ==============================
 def render_onepage_html(resumos: list[dict]):
-    HEIGHT = 380
+    # ✅ altura um pouco maior pra garantir que nada fique fora
+    HEIGHT = 420
 
     js_data = [{"key": r["key"], "oee": round(float(r["oee"]), 1)} for r in resumos]
 
@@ -425,9 +389,10 @@ def render_onepage_html(resumos: list[dict]):
       <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
 
       <style>
-        .grid-4 {{
+        /* ✅ 3 COLUNAS FIXAS (esteira / mola / manga&pnm) */
+        .grid-3 {{
           display:grid;
-          grid-template-columns: repeat(4, 1fr);
+          grid-template-columns: repeat(3, 1fr);
           gap: 26px;
           align-items: stretch;
         }}
@@ -527,13 +492,13 @@ def render_onepage_html(resumos: list[dict]):
           margin-top: 2px;
         }}
 
-        @media (max-width: 1400px) {{
-          .grid-4 {{ grid-template-columns: repeat(2, 1fr); }}
-          .card {{ height: 330px; }}
+        /* ✅ se a tela for realmente pequena, cai para 2 colunas (raramente em TV) */
+        @media (max-width: 1100px) {{
+          .grid-3 {{ grid-template-columns: repeat(2, 1fr); }}
         }}
       </style>
 
-      <div class="grid-4">
+      <div class="grid-3">
         {''.join(cards_html)}
       </div>
 
@@ -585,7 +550,7 @@ def main():
     aplicar_css_app()
 
     if AUTORELOAD_AVAILABLE:
-        refresh_key = f"autorefresh_{Path(__file__).stem}_{inspect.currentframe().f_lineno}"
+        refresh_key = f"autorefresh_{Path(__file__).stem}_onepage"
         st_autorefresh(interval=60000, key=refresh_key)
 
     hoje = datetime.datetime.now(TZ).date()
@@ -611,11 +576,11 @@ def main():
         unsafe_allow_html=True
     )
 
+    # ✅ 3 CARDS: ESTEIRA, MOLA, MANGA&PNM
     resumos = [
         resumo_esteira(data_inicio, data_fim),
         resumo_mola(data_inicio, data_fim),
-        resumo_manga(data_inicio, data_fim),
-        resumo_pnm(data_inicio, data_fim),
+        resumo_manga_pnm(data_inicio, data_fim),
     ]
 
     render_onepage_html(resumos)
