@@ -100,7 +100,7 @@ def _parse_datahora(df: pd.DataFrame, col: str = "data_hora") -> pd.DataFrame:
 def _load_table_paged(table_name: str, date_col="data_hora") -> pd.DataFrame:
     data_total = []
     inicio = 0
-    passo = 300
+    passo = 1000
     while True:
         resp = supabase.table(table_name).select("*").range(inicio, inicio + passo - 1).execute()
         dados = resp.data
@@ -114,10 +114,9 @@ def _load_table_paged(table_name: str, date_col="data_hora") -> pd.DataFrame:
         df = _parse_datahora(df, date_col)
     return df
 
+# ✅ TTL maior (600s) pra não estourar consulta e ficar leve na TV
 @st.cache_data(ttl=600)
 def carregar_apontamentos_esteira():
-    # ✅ sua base "geral" (apontamentos) tem ESTEIRA/EIXO/MANGA/PNM no tipo_producao,
-    # mas aqui vamos considerar como "ESTEIRA" o painel principal (antigo "geral").
     return _load_table_paged("apontamentos")
 
 @st.cache_data(ttl=600)
@@ -221,7 +220,7 @@ def resumo_esteira(data_inicio: datetime.date, data_fim: datetime.date) -> dict:
     df_apont = filtrar_periodo(carregar_apontamentos_esteira(), data_inicio, data_fim)
     df_checks = filtrar_periodo(carregar_checklists_esteira(), data_inicio, data_fim)
 
-    # ✅ se quiser "ESTEIRA" puro, filtra por tipo_producao contendo ESTEIRA/EIXO (você ajusta se necessário)
+    # ESTEIRA/EIXO na base geral
     if not df_apont.empty and "tipo_producao" in df_apont.columns:
         df_apont = df_apont[df_apont["tipo_producao"].astype(str).str.contains("ESTEIRA|EIXO", case=False, na=False)]
 
@@ -291,7 +290,7 @@ def resumo_manga(data_inicio: datetime.date, data_fim: datetime.date) -> dict:
     df_apont = filtrar_periodo(carregar_apontamentos_manga_pnm(), data_inicio, data_fim)
     df_checks = filtrar_periodo(carregar_checklists_manga_pnm(), data_inicio, data_fim)
 
-    # ✅ separa só MANGA
+    # ✅ separa só MANGA (na base manga_pnm)
     if not df_apont.empty and "tipo_producao" in df_apont.columns:
         df_apont = df_apont[df_apont["tipo_producao"].astype(str).str.contains("MANGA", case=False, na=False)]
     if not df_checks.empty and "tipo_producao" in df_checks.columns:
@@ -330,7 +329,7 @@ def resumo_pnm(data_inicio: datetime.date, data_fim: datetime.date) -> dict:
     df_apont = filtrar_periodo(carregar_apontamentos_manga_pnm(), data_inicio, data_fim)
     df_checks = filtrar_periodo(carregar_checklists_manga_pnm(), data_inicio, data_fim)
 
-    # ✅ separa só PNM
+    # ✅ separa só PNM (na base manga_pnm)
     if not df_apont.empty and "tipo_producao" in df_apont.columns:
         df_apont = df_apont[df_apont["tipo_producao"].astype(str).str.contains("PNM", case=False, na=False)]
     if not df_checks.empty and "tipo_producao" in df_checks.columns:
@@ -609,6 +608,7 @@ def main():
         unsafe_allow_html=True
     )
 
+    # ✅ 4 CARDS: ESTEIRA, MOLA, MANGA, PNM
     resumos = [
         resumo_esteira(data_inicio, data_fim),
         resumo_mola(data_inicio, data_fim),
@@ -623,6 +623,9 @@ def main():
         f"<p style='color:rgba(255,255,255,0.55);text-align:center;margin-top:10px;'>Atualizado às <b>{hora}</b></p>",
         unsafe_allow_html=True
     )
+
+if __name__ == "__main__":
+    main()
 
 if __name__ == "__main__":
     main()
