@@ -583,7 +583,8 @@ def main():
     aplicar_css_app()
 
     if AUTORELOAD_AVAILABLE:
-        st_autorefresh(interval=60000, key="onepage_refresh")
+        refresh_key = f"autorefresh_{Path(__file__).stem}"  # ex: autorefresh_tv
+        st_autorefresh(interval=60000, key=refresh_key)
 
     hoje = datetime.datetime.now(TZ).date()
 
