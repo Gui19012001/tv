@@ -1,5 +1,4 @@
 import os
-import uuid
 import datetime
 from pathlib import Path
 
@@ -10,13 +9,20 @@ import streamlit.components.v1 as components
 from dotenv import load_dotenv
 from supabase import create_client
 
+# OpenAI (SDK novo)
+try:
+    from openai import OpenAI
+    OPENAI_AVAILABLE = True
+except Exception:
+    OPENAI_AVAILABLE = False
+
 # ==============================
 # ✅ PAGE CONFIG
 # ==============================
 st.set_page_config(
     page_title="One Page Gerencial — Linhas",
     layout="wide",
-    initial_sidebar_state="collapsed"  # sidebar existe, mas começa recolhida
+    initial_sidebar_state="collapsed"  # sidebar começa recolhida
 )
 
 # ==============================
@@ -29,7 +35,7 @@ except ImportError:
     AUTORELOAD_AVAILABLE = False
 
 # ==============================
-# ENV / SUPABASE
+# ENV / SUPABASE / OPENAI
 # ==============================
 env_path = Path(__file__).parent / "teste.env"
 load_dotenv(dotenv_path=env_path)
@@ -40,17 +46,25 @@ if not SUPABASE_URL or not SUPABASE_KEY:
     raise RuntimeError("SUPABASE_URL / SUPABASE_KEY não encontrados no teste.env")
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+
 TZ = pytz.timezone("America/Sao_Paulo")
+
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4.1").strip()
+
+openai_client = None
+if OPENAI_AVAILABLE and OPENAI_API_KEY:
+    openai_client = OpenAI(api_key=OPENAI_API_KEY)
 
 # ==============================
 # CSS (APP branco + cards azul marinho)
-# + esconde indicador/flash de atualização
+# + mantém botão do sidebar acessível
+# + reduz “piscada” (sem esconder header totalmente)
 # ==============================
 def aplicar_css_app():
     st.markdown(
         """
         <style>
-        /* Área principal */
         .block-container {
             padding-top: 0.8rem;
             padding-bottom: 0.8rem;
@@ -59,17 +73,34 @@ def aplicar_css_app():
             max-width: 100%;
         }
 
-        /* Esconde header/toolbar */
-        header[data-testid="stHeader"] {display:none;}
+        /* Não “mata” o header (senão some o botão do sidebar) */
+        header[data-testid="stHeader"] {
+            background: transparent;
+            border: none;
+        }
+
+        /* Esconde toolbar, mas mantém header vivo */
         div[data-testid="stToolbar"] {visibility:hidden;height:0;position:fixed;}
 
-        /* Esconde widgets de status/running do Streamlit (reduz "branco" e piscada) */
+        /* Deixa o botão do sidebar sempre acessível */
+        button[data-testid="stSidebarCollapseButton"]{
+            position: fixed !important;
+            top: 12px !important;
+            left: 10px !important;
+            z-index: 999999 !important;
+            opacity: 0.35;
+            transform: scale(1.05);
+        }
+        button[data-testid="stSidebarCollapseButton"]:hover{opacity: 1;}
+
+        /* Reduz widgets/efeitos visuais de status */
         div[data-testid="stStatusWidget"] {display:none !important;}
         div[data-testid="stDecoration"] {display:none !important;}
-        div[data-testid="stSpinner"] {display:none !important;}
 
         /* Fundo branco clean */
-        .stApp { background: #F6F7FB; }
+        .stApp {
+            background: #F6F7FB;
+        }
 
         .op-title {
             font-size: 22px;
@@ -84,84 +115,10 @@ def aplicar_css_app():
             margin-bottom: 10px;
         }
 
-        /* Deixa o botão da sidebar mais discreto */
-        button[kind="header"] {opacity: 0.25;}
-        button[kind="header"]:hover {opacity: 1;}
-
-        /* ====== Resumo + IA (futurista minimalista) ====== */
-        .rx-wrap {
-            background: linear-gradient(135deg, #071124 0%, #0B1B33 55%, #093A5A 100%);
-            border: 1px solid rgba(255,255,255,0.10);
-            box-shadow: 0 14px 26px rgba(0,0,0,0.10);
-            border-radius: 18px;
-            padding: 14px 16px;
-            color: #F3F7FF;
-        }
-        .rx-h {
-            font-weight: 950;
-            letter-spacing: .2px;
-            text-transform: uppercase;
-            font-size: 12px;
-            color: rgba(243,247,255,0.88);
-            margin-bottom: 10px;
-        }
-        .rx-grid {
-            display: grid;
-            grid-template-columns: repeat(3, minmax(220px, 1fr));
-            gap: 10px;
-        }
-        .rx-kpi {
-            background: rgba(255,255,255,0.06);
-            border: 1px solid rgba(255,255,255,0.10);
-            border-radius: 14px;
-            padding: 10px 12px;
-            min-height: 74px;
-        }
-        .rx-kpi .k {
-            font-size: 10px;
-            font-weight: 900;
-            text-transform: uppercase;
-            color: rgba(243,247,255,0.75);
-            margin-bottom: 6px;
-        }
-        .rx-kpi .v {
-            font-size: 18px;
-            font-weight: 950;
-            color: rgba(243,247,255,0.95);
-            line-height: 1.0;
-        }
-        .rx-kpi .s {
-            font-size: 10px;
-            color: rgba(243,247,255,0.70);
-            margin-top: 6px;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-        .rx-line {
-            margin-top: 10px;
-            display: grid;
-            grid-template-columns: 1.1fr .9fr;
-            gap: 10px;
-        }
-        .rx-box {
-            background: rgba(255,255,255,0.06);
-            border: 1px solid rgba(255,255,255,0.10);
-            border-radius: 14px;
-            padding: 12px;
-        }
-        .rx-box h4 {
-            margin: 0 0 8px 0;
-            font-size: 11px;
-            text-transform: uppercase;
-            letter-spacing: .2px;
-            color: rgba(243,247,255,0.85);
-        }
-        .rx-ul { margin: 0; padding-left: 16px; color: rgba(243,247,255,0.88); }
-        .rx-ul li { margin: 6px 0; font-size: 12px; }
-        @media (max-width: 1200px) {
-            .rx-grid { grid-template-columns: 1fr; }
-            .rx-line { grid-template-columns: 1fr; }
+        /* Sidebar clean */
+        section[data-testid="stSidebar"] {
+            background: #FFFFFF;
+            border-right: 1px solid rgba(11,27,51,0.10);
         }
         </style>
         """,
@@ -177,12 +134,12 @@ def _parse_datahora(df: pd.DataFrame, col: str = "data_hora") -> pd.DataFrame:
 
     dt = pd.to_datetime(df[col], errors="coerce")
 
-    # Se já vier timezone-aware
+    # timezone-aware
     if getattr(dt.dt, "tz", None) is not None:
         df[col] = dt.dt.tz_convert(TZ)
         return df
 
-    # Se vier naive, assume horário local
+    # naive -> assume local
     df[col] = dt.dt.tz_localize(TZ)
     return df
 
@@ -242,6 +199,77 @@ def filtrar_periodo(df: pd.DataFrame, data_inicio: datetime.date, data_fim: date
     dff = dff[dff["data_hora"].notna()]
     return dff[(dff["data_hora"].dt.date >= data_inicio) & (dff["data_hora"].dt.date <= data_fim)]
 
+def _norm(x) -> str:
+    return str(x).strip().lower()
+
+def _is_sim(x) -> bool:
+    v = _norm(x)
+    return v in ("sim", "s", "1", "true", "verdadeiro", "yes", "y")
+
+def _is_nao(x) -> bool:
+    v = _norm(x)
+    return v in ("não", "nao", "n", "0", "false", "falso", "no")
+
+def _is_reprovado_row(row: pd.Series) -> bool:
+    # status
+    if "status" in row.index and _norm(row.get("status")) in ("não conforme", "nao conforme", "reprovado"):
+        return True
+
+    # produto_reprovado: "Sim" = reprovado
+    if "produto_reprovado" in row.index:
+        pr = row.get("produto_reprovado")
+        if _is_sim(pr):
+            return True
+        if _is_nao(pr):
+            return False
+
+    # flags alternativas
+    for col in ("reprovado", "aprovado"):
+        if col in row.index:
+            v = row.get(col)
+            if col == "reprovado" and _is_sim(v):
+                return True
+            if col == "aprovado" and _is_nao(v):
+                return True
+
+    return False
+
+def calcular_aprovacao(df_checks: pd.DataFrame, df_apont: pd.DataFrame) -> tuple[float, int, int]:
+    """
+    Retorna: (aprovacao %, total_inspecionado, total_reprovados)
+    Usa o ÚLTIMO registro por numero_serie (por data_hora se existir).
+    """
+    if df_checks is None or df_checks.empty or df_apont is None or df_apont.empty:
+        return 0.0, 0, 0
+    if "numero_serie" not in df_apont.columns or "numero_serie" not in df_checks.columns:
+        return 0.0, 0, 0
+
+    series_validas = pd.Series(df_apont["numero_serie"].dropna().unique())
+    dfc = df_checks[df_checks["numero_serie"].isin(series_validas)].copy()
+    if dfc.empty:
+        return 0.0, 0, 0
+
+    # ordena se tiver data_hora
+    if "data_hora" in dfc.columns:
+        dfc = dfc[dfc["data_hora"].notna()].copy()
+        dfc = dfc.sort_values(["numero_serie", "data_hora"])
+        ult = dfc.groupby("numero_serie", as_index=False).tail(1)
+    else:
+        ult = dfc.groupby("numero_serie", as_index=False).tail(1)
+
+    total_inspecionado = int(ult["numero_serie"].nunique())
+    if total_inspecionado == 0:
+        return 0.0, 0, 0
+
+    reprovados = 0
+    for _, row in ult.iterrows():
+        if _is_reprovado_row(row):
+            reprovados += 1
+
+    aprovados = total_inspecionado - reprovados
+    aprovacao_perc = (aprovados / total_inspecionado) * 100
+    return float(aprovacao_perc), total_inspecionado, int(reprovados)
+
 def calcular_meta_acumulada_por_hora(meta_hora: dict, hoje: datetime.date, hora_atual: datetime.datetime, modo="fim_hora") -> int:
     meta_acumulada = 0
 
@@ -263,97 +291,38 @@ def calcular_meta_acumulada_por_hora(meta_hora: dict, hoje: datetime.date, hora_
 
     return int(meta_acumulada)
 
-def _norm(x) -> str:
-    return str(x).strip().lower()
-
-def _is_sim(x) -> bool:
-    v = _norm(x)
-    return v in ("sim", "s", "1", "true", "verdadeiro", "yes", "y")
-
-def _is_nao(x) -> bool:
-    v = _norm(x)
-    return v in ("não", "nao", "n", "0", "false", "falso", "no")
-
-def _is_reprovado_row(row: pd.Series) -> bool:
-    # 1) status
-    if "status" in row.index and _norm(row.get("status")) in ("não conforme", "nao conforme", "reprovado"):
-        return True
-
-    # 2) produto_reprovado (padrões: "Sim"=reprovado, "Não"=ok)
-    if "produto_reprovado" in row.index:
-        pr = row.get("produto_reprovado")
-        if _is_sim(pr):
-            return True
-        if _is_nao(pr):
-            return False
-
-    # 3) flags alternativas comuns
-    for col in ("reprovado", "aprovado"):
-        if col in row.index:
-            v = row.get(col)
-            if col == "reprovado" and _is_sim(v):
-                return True
-            if col == "aprovado" and _is_nao(v):
-                return True
-
-    return False
-
-def calcular_aprovacao(df_checks: pd.DataFrame, df_apont: pd.DataFrame) -> tuple[float, int, int]:
-    """
-    Retorna: (aprovacao %, total_inspecionado, total_reprovados)
-
-    Regra robusta:
-    - Para cada número de série, usa o último registro (por data_hora se existir),
-      senão usa o último por ordem de carregamento.
-    - Reprovado se status == "não conforme" OU produto_reprovado == "Sim" (ou equivalentes).
-    """
-    if df_checks is None or df_checks.empty or df_apont is None or df_apont.empty:
-        return 0.0, 0, 0
-    if "numero_serie" not in df_apont.columns or "numero_serie" not in df_checks.columns:
-        return 0.0, 0, 0
-
-    series_validas = pd.Series(df_apont["numero_serie"].dropna().unique())
-    dfc = df_checks[df_checks["numero_serie"].isin(series_validas)].copy()
-    if dfc.empty:
-        return 0.0, 0, 0
-
-    # garante ordenação (se tiver data_hora no checklist)
-    if "data_hora" in dfc.columns:
-        dfc = dfc[dfc["data_hora"].notna()].copy()
-        dfc = dfc.sort_values(["numero_serie", "data_hora"])
-        ult = dfc.groupby("numero_serie", as_index=False).tail(1)
-    else:
-        ult = dfc.groupby("numero_serie", as_index=False).tail(1)
-
-    total_inspecionado = int(ult["numero_serie"].nunique())
-    if total_inspecionado == 0:
-        return 0.0, 0, 0
-
-    reprovados = 0
-    for _, row in ult.iterrows():
-        if _is_reprovado_row(row):
-            reprovados += 1
-
-    aprovados = total_inspecionado - reprovados
-    aprovacao_perc = (aprovados / total_inspecionado) * 100
-    return float(aprovacao_perc), total_inspecionado, int(reprovados)
-
 def calcular_oee(atraso: int, meta_acumulada: int, aprovacao_perc: float) -> float:
     performance_fraction = max(1 - (atraso / meta_acumulada), 0) if meta_acumulada > 0 else 1
     quality_fraction = (aprovacao_perc / 100) if aprovacao_perc > 0 else 0
     return float(performance_fraction * quality_fraction * 100)
 
+def primeiro_dia_mes(d: datetime.date) -> datetime.date:
+    return d.replace(day=1)
+
+def is_workday(d: datetime.date) -> bool:
+    # Seg(0) ... Dom(6)
+    return d.weekday() < 5
+
+def meta_mes_total(meta_hora: dict, data_ini: datetime.date, data_fim: datetime.date) -> int:
+    meta_dia = int(sum(int(v) for v in meta_hora.values()))
+    total = 0
+    d = data_ini
+    while d <= data_fim:
+        if is_workday(d):
+            total += meta_dia
+        d += datetime.timedelta(days=1)
+    return int(total)
+
 # ==============================
-# Resumos (3 cards: APONTAMENTOS total, MOLA, MANGA&PNM)
+# Resumos (3 cards: TOTAL apontamentos, MOLA, MANGA&PNM)
 # ==============================
-def resumo_esteira(data_inicio: datetime.date, data_fim: datetime.date) -> dict:
+def resumo_total_apontamentos(data_inicio: datetime.date, data_fim: datetime.date) -> dict:
     hoje = datetime.datetime.now(TZ).date()
     hora_atual = datetime.datetime.now(TZ)
 
     df_apont = filtrar_periodo(carregar_apontamentos(), data_inicio, data_fim)
     df_checks = filtrar_periodo(carregar_checklists(), data_inicio, data_fim)
 
-    # ✅ NÃO FILTRA MAIS: pega tudo da tabela "apontamentos"
     meta_hora = {
         datetime.time(6,0):26, datetime.time(7,0):26, datetime.time(8,0):26,
         datetime.time(9,0):26, datetime.time(10,0):26, datetime.time(11,0):6,
@@ -377,7 +346,7 @@ def resumo_esteira(data_inicio: datetime.date, data_fim: datetime.date) -> dict:
         rodape = f"Eixo/Esteira: {eixo} | Manga: {manga} | PNM: {pnm}"
 
     return {
-        "key": "esteira",
+        "key": "total",
         "nome": "APONTAMENTOS (TOTAL)",
         "total": total,
         "aprovacao": aprov,
@@ -407,7 +376,7 @@ def resumo_mola(data_inicio: datetime.date, data_fim: datetime.date) -> dict:
     meta_acum = calcular_meta_acumulada_por_hora(meta_hora, hoje, hora_atual, modo="inicio_hora")
     atraso = int(max(meta_acum - total, 0))
 
-    aprov, insp, rep = calcular_aprovacao(df_checks, df_apont)  # ✅ robusto
+    aprov, insp, rep = calcular_aprovacao(df_checks, df_apont)
     oee = calcular_oee(atraso, meta_acum, aprov)
 
     rodape = f"Reprovados: {rep}" if insp > 0 else ""
@@ -467,16 +436,14 @@ def resumo_manga_pnm(data_inicio: datetime.date, data_fim: datetime.date) -> dic
     }
 
 # ==============================
-# ONEPAGE (1 iframe, 3 cards alinhados)
-# + eixo 0% e 100% visíveis
-# (NÃO MEXER NA ESTRUTURA DA 1ª PÁGINA)
+# ONEPAGE HTML (3 cards alinhados)
 # ==============================
-def render_onepage_html(resumos: list[dict]) -> str:
+def render_onepage_html(resumos: list[dict]) -> tuple[str, int]:
     HEIGHT = 430
     js_data = [{"key": r["key"], "oee": round(float(r["oee"]), 1)} for r in resumos]
 
     def pill_for(r: dict) -> tuple[str, str, str]:
-        status_ok = (int(r.get("atraso", 0)) == 0) and ("sem fonte" not in str(r.get("status", "")).lower())
+        status_ok = (int(r.get("atraso", 0)) == 0)
         if status_ok:
             return "OK", "rgba(56,161,105,0.16)", "rgba(56,161,105,0.40)"
         return "ATENÇÃO", "rgba(197,48,48,0.12)", "rgba(197,48,48,0.38)"
@@ -534,7 +501,6 @@ def render_onepage_html(resumos: list[dict]) -> str:
       <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
 
       <style>
-        /* ✅ 3 cards lado a lado */
         .grid-3 {{
           display: grid;
           grid-template-columns: repeat(3, minmax(360px, 1fr));
@@ -699,295 +665,285 @@ def render_onepage_html(resumos: list[dict]) -> str:
     return html, HEIGHT
 
 # ==============================
-# Pareto TOP 3 (falhas) - robusto
+# Pareto Top 3 (reprovações)
 # ==============================
-def _find_falha_col(df: pd.DataFrame) -> str | None:
-    candidatos = [
-        "falha", "defeito", "motivo", "nao_conformidade", "não_conformidade",
-        "descricao_falha", "descrição_falha", "tipo_falha", "ocorrencia",
-        "item", "ponto", "anomalia", "causa", "problema"
+def _guess_fail_col(df: pd.DataFrame) -> str | None:
+    if df is None or df.empty:
+        return None
+    candidates = [
+        "falha", "defeito", "motivo", "motivo_falha", "causa",
+        "nao_conformidade", "não_conformidade", "descricao_falha",
+        "observacao", "observação", "item", "problema"
     ]
     cols = {c.lower(): c for c in df.columns}
-    for c in candidatos:
-        if c.lower() in cols:
-            return cols[c.lower()]
+    for cand in candidates:
+        if cand.lower() in cols:
+            return cols[cand.lower()]
     return None
 
-def pareto_top3_falhas(df_checks_periodo: pd.DataFrame) -> list[tuple[str, int]]:
-    """
-    Conta TOP 3 falhas somente em linhas reprovadas (por linha, não por série).
-    Se não existir coluna de falha, retorna vazio.
-    """
-    if df_checks_periodo is None or df_checks_periodo.empty:
+def pareto_top3(df_checks: pd.DataFrame) -> list[tuple[str, int]]:
+    if df_checks is None or df_checks.empty:
         return []
-
-    falha_col = _find_falha_col(df_checks_periodo)
-    if not falha_col:
+    fail_col = _guess_fail_col(df_checks)
+    if not fail_col:
         return []
-
-    d = df_checks_periodo.copy()
-    # marca reprovados por linha
-    d["__reprov"] = d.apply(_is_reprovado_row, axis=1)
-    d = d[d["__reprov"] == True].copy()
-    if d.empty:
+    dfr = df_checks.copy()
+    # filtra só reprovados
+    mask_rep = dfr.apply(_is_reprovado_row, axis=1)
+    dfr = dfr[mask_rep]
+    if dfr.empty:
         return []
-
-    d[falha_col] = d[falha_col].astype(str).str.strip()
-    d = d[d[falha_col] != ""]
-    if d.empty:
+    vc = dfr[fail_col].astype(str).str.strip()
+    vc = vc[vc.ne("") & vc.ne("nan")]
+    if vc.empty:
         return []
-
-    top = d[falha_col].value_counts().head(3)
-    return [(idx, int(val)) for idx, val in top.items()]
+    top = vc.value_counts().head(3)
+    return [(str(idx), int(val)) for idx, val in top.items()]
 
 # ==============================
-# IA (OpenAI) - funciona por ENV ou por campo no sidebar
+# Página 1: One Page (congela no refresh)
 # ==============================
-def call_openai_insights(api_key: str, modelo: str, payload_texto: str) -> str:
-    """
-    Tenta usar SDK novo (openai). Se não tiver, cai fora com erro claro.
-    """
-    try:
-        from openai import OpenAI
-    except Exception as e:
-        raise RuntimeError("Biblioteca 'openai' não instalada no ambiente. Adicione em requirements.txt: openai") from e
+def page_onepage(data_inicio: datetime.date, data_fim: datetime.date):
+    ph = st.empty()
 
-    client = OpenAI(api_key=api_key)
+    # mostra último HTML antes de recalcular
+    if "last_html_onepage" in st.session_state and "last_height_onepage" in st.session_state:
+        with ph.container():
+            components.html(st.session_state["last_html_onepage"], height=st.session_state["last_height_onepage"], scrolling=False)
 
-    prompt = f"""
-Você é um analista Lean/Produção e Qualidade.
-Gere um resumo minimalista e acionável (máx 10 linhas), em português do Brasil.
-- Performance = atraso/meta + OEE
-- Qualidade = aprovação + reprovados
-- Cite os TOP 3 do pareto como foco de ataque
-- Sugira ações práticas (check rápido) sem inventar fatos.
+    resumos = [
+        resumo_total_apontamentos(data_inicio, data_fim),
+        resumo_mola(data_inicio, data_fim),
+        resumo_manga_pnm(data_inicio, data_fim),
+    ]
 
-DADOS:
-{payload_texto}
+    html, height = render_onepage_html(resumos)
+
+    with ph.container():
+        components.html(html, height=height, scrolling=False)
+
+    st.session_state["last_html_onepage"] = html
+    st.session_state["last_height_onepage"] = height
+
+# ==============================
+# Página 2: Resumo Mensal + IA
+# ==============================
+def page_resumo_ia():
+    hoje = datetime.datetime.now(TZ).date()
+    ini_mes = primeiro_dia_mes(hoje)
+    fim = hoje
+
+    st.markdown("### Resumo do mês (Performance & Qualidade)")
+    st.caption(f"Período: {ini_mes} até {fim}")
+
+    # Carrega bases do mês
+    a_total = filtrar_periodo(carregar_apontamentos(), ini_mes, fim)
+    c_total = filtrar_periodo(carregar_checklists(), ini_mes, fim)
+
+    a_mola = filtrar_periodo(carregar_apontamentos_mola(), ini_mes, fim)
+    c_mola = filtrar_periodo(carregar_checklists_mola(), ini_mes, fim)
+
+    a_mp = filtrar_periodo(carregar_apontamentos_manga_pnm(), ini_mes, fim)
+    c_mp = filtrar_periodo(carregar_checklists_manga_pnm(), ini_mes, fim)
+
+    # Metas (mensal)
+    meta_total_hora = {
+        datetime.time(6,0):26, datetime.time(7,0):26, datetime.time(8,0):26,
+        datetime.time(9,0):26, datetime.time(10,0):26, datetime.time(11,0):6,
+        datetime.time(12,0):26, datetime.time(13,0):26, datetime.time(14,0):26,
+        datetime.time(15,0):12
+    }
+    meta_mola_hora = {
+        datetime.time(6, 0): 14, datetime.time(7, 0): 14, datetime.time(8, 0): 14,
+        datetime.time(9, 0): 14, datetime.time(10, 0): 14, datetime.time(11, 0): 14,
+        datetime.time(12, 0): 0,  datetime.time(13, 0): 14, datetime.time(14, 0): 14,
+        datetime.time(15, 0): 8,  datetime.time(16, 0): 14, datetime.time(17, 0): 1,
+    }
+    meta_mp_hora = {
+        datetime.time(6, 0): 4, datetime.time(7, 0): 4, datetime.time(8, 0): 4,
+        datetime.time(9, 0): 4, datetime.time(10, 0): 4, datetime.time(11, 0): 0,
+        datetime.time(12, 0): 4, datetime.time(13, 0): 4, datetime.time(14, 0): 4,
+        datetime.time(15, 0): 4,
+    }
+
+    meta_total_mes = meta_mes_total(meta_total_hora, ini_mes, fim)
+    meta_mola_mes = meta_mes_total(meta_mola_hora, ini_mes, fim)
+    meta_mp_mes = meta_mes_total(meta_mp_hora, ini_mes, fim)
+
+    # Produção (mensal)
+    prod_total = int(len(a_total))
+    prod_mola = int(len(a_mola))
+    prod_mp = int(len(a_mp))
+
+    # Performance = produzido / meta
+    perf_total = (prod_total / meta_total_mes * 100) if meta_total_mes > 0 else 0.0
+    perf_mola = (prod_mola / meta_mola_mes * 100) if meta_mola_mes > 0 else 0.0
+    perf_mp = (prod_mp / meta_mp_mes * 100) if meta_mp_mes > 0 else 0.0
+
+    # Qualidade (mensal)
+    q_total, insp_total, rep_total = calcular_aprovacao(c_total, a_total)
+    q_mola, insp_mola, rep_mola = calcular_aprovacao(c_mola, a_mola)
+    q_mp, insp_mp, rep_mp = calcular_aprovacao(c_mp, a_mp)
+
+    # Pareto top3 (esteira/total)
+    top3_total = pareto_top3(c_total)
+
+    # UI minimalista
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Performance (Total)", f"{perf_total:.1f}%")
+        st.caption(f"Produzido: {prod_total} | Meta mês: {meta_total_mes}")
+        st.metric("Qualidade (Total)", f"{q_total:.1f}%")
+        st.caption(f"Inspec.: {insp_total} | Reprov.: {rep_total}")
+
+    with col2:
+        st.metric("Performance (Mola)", f"{perf_mola:.1f}%")
+        st.caption(f"Produzido: {prod_mola} | Meta mês: {meta_mola_mes}")
+        st.metric("Qualidade (Mola)", f"{q_mola:.1f}%")
+        st.caption(f"Inspec.: {insp_mola} | Reprov.: {rep_mola}")
+
+    with col3:
+        st.metric("Performance (Manga & PNM)", f"{perf_mp:.1f}%")
+        st.caption(f"Produzido: {prod_mp} | Meta mês: {meta_mp_mes}")
+        st.metric("Qualidade (Manga & PNM)", f"{q_mp:.1f}%")
+        st.caption(f"Inspec.: {insp_mp} | Reprov.: {rep_mp}")
+
+    st.divider()
+    st.markdown("#### Pareto (Top 3 falhas) — Total/Esteira")
+    if top3_total:
+        for i, (nome, qtd) in enumerate(top3_total, start=1):
+            st.write(f"**{i}. {nome}** — {qtd}")
+    else:
+        st.caption("Não achei coluna de falha (ex: falha/defeito/motivo) ou não há reprovações no período.")
+
+    st.divider()
+
+    # IA
+    st.markdown("#### Insights (IA)")
+    if not OPENAI_API_KEY or not openai_client:
+        st.warning("OPENAI_API_KEY não configurada no teste.env (ou SDK openai não instalado).")
+        st.caption("Configure OPENAI_API_KEY e reinicie o app.")
+        return
+
+    if st.button("Gerar Insights (IA)"):
+        payload = {
+            "mes": f"{ini_mes} a {fim}",
+            "total": {
+                "produzido": prod_total,
+                "meta_mes": meta_total_mes,
+                "performance_pct": round(perf_total, 1),
+                "qualidade_pct": round(q_total, 1),
+                "inspecionado": insp_total,
+                "reprovados": rep_total,
+                "pareto_top3": top3_total
+            },
+            "mola": {
+                "produzido": prod_mola,
+                "meta_mes": meta_mola_mes,
+                "performance_pct": round(perf_mola, 1),
+                "qualidade_pct": round(q_mola, 1),
+                "inspecionado": insp_mola,
+                "reprovados": rep_mola
+            },
+            "manga_pnm": {
+                "produzido": prod_mp,
+                "meta_mes": meta_mp_mes,
+                "performance_pct": round(perf_mp, 1),
+                "qualidade_pct": round(q_mp, 1),
+                "inspecionado": insp_mp,
+                "reprovados": rep_mp
+            },
+        }
+
+        prompt = f"""
+Você é um analista industrial (produção e qualidade).
+Com base nos dados abaixo (JSON), gere um resumo bem minimalista e direto:
+
+1) Situação de PERFORMANCE do mês (Total / Mola / Manga&PNM) e onde está o maior gap.
+2) Situação de QUALIDADE do mês e o impacto (reprovados + pareto top3).
+3) 3 ações práticas (curtas) para atacar as principais causas.
+4) 3 perguntas que eu deveria fazer na reunião de produção amanhã.
+
+Responda em português, com bullets curtos (sem texto longo).
+JSON:
+{payload}
 """.strip()
 
-    resp = client.responses.create(
-        model=modelo,
-        input=prompt,
-    )
-    try:
-        return resp.output_text.strip()
-    except Exception:
-        return str(resp).strip()
+        with st.spinner("Gerando insights..."):
+            # Exemplo oficial do endpoint /responses (SDK novo usa client.responses.create). :contentReference[oaicite:1]{index=1}
+            resp = openai_client.responses.create(
+                model=OPENAI_MODEL,
+                input=prompt
+            )
 
-# ==============================
-# Página 2: Resumo minimalista + IA
-# ==============================
-def render_resumo_com_ia(
-    data_inicio: datetime.date,
-    data_fim: datetime.date,
-    api_key_ia: str,
-    modelo_ia: str
-):
-    # Resumos (mesmo cálculo dos cards)
-    r1 = resumo_esteira(data_inicio, data_fim)
-    r2 = resumo_mola(data_inicio, data_fim)
-    r3 = resumo_manga_pnm(data_inicio, data_fim)
+        # extrai texto (tenta o campo mais comum)
+        out_text = ""
+        try:
+            # SDK geralmente traz output_text agregada em resp.output_text
+            out_text = getattr(resp, "output_text", "") or ""
+        except Exception:
+            out_text = ""
 
-    # Pareto na ESTEIRA (checklists geral) no período
-    df_checks = filtrar_periodo(carregar_checklists(), data_inicio, data_fim)
-    top3 = pareto_top3_falhas(df_checks)
-
-    top3_txt = " | ".join([f"{n} ({q})" for n, q in top3]) if top3 else "Sem coluna de falha / sem reprovações"
-
-    # bloco futurista minimalista (não mexe nos cards)
-    html = f"""
-    <div class="rx-wrap">
-        <div class="rx-h">Resumo do período • Minimalista</div>
-
-        <div class="rx-grid">
-            <div class="rx-kpi">
-                <div class="k">Performance (Total)</div>
-                <div class="v">OEE {r1['oee']:.1f}% • Atraso {r1['atraso']}</div>
-                <div class="s">Produzido: {r1['total']} • Meta acumulada: (via horário)</div>
-            </div>
-            <div class="rx-kpi">
-                <div class="k">Qualidade (Total)</div>
-                <div class="v">{r1['aprovacao']:.1f}% • Reprov. {int(r1['reprovados'])}</div>
-                <div class="s">Inspec.: {int(r1['inspecionado'])}</div>
-            </div>
-            <div class="rx-kpi">
-                <div class="k">Pareto Top 3 (Esteira)</div>
-                <div class="v" style="font-size:13px; line-height:1.2;">{top3_txt}</div>
-                <div class="s">Foco de ataque do dia/mês</div>
-            </div>
-        </div>
-
-        <div class="rx-line">
-            <div class="rx-box">
-                <h4>Linhas (visão rápida)</h4>
-                <ul class="rx-ul">
-                    <li><b>{r2['nome']}</b> — OEE {r2['oee']:.1f}% • Atraso {r2['atraso']} • Qualidade {r2['aprovacao']:.1f}% • Reprov. {int(r2['reprovados'])}</li>
-                    <li><b>{r3['nome']}</b> — OEE {r3['oee']:.1f}% • Atraso {r3['atraso']} • Qualidade {r3['aprovacao']:.1f}% • Reprov. {int(r3['reprovados'])}</li>
-                </ul>
-            </div>
-
-            <div class="rx-box">
-                <h4>Insights</h4>
-                <div style="font-size:12px; color:rgba(243,247,255,0.88);">
-                    Clique em <b>Gerar Insights IA</b> para recomendações.
-                </div>
-            </div>
-        </div>
-    </div>
-    """
-    st.markdown(html, unsafe_allow_html=True)
-
-    # Payload para IA
-    payload = {
-        "periodo": f"{data_inicio} até {data_fim}",
-        "total": r1,
-        "mola": r2,
-        "manga_pnm": r3,
-        "pareto_top3": top3
-    }
-    payload_texto = str(payload)
-
-    # Botão IA
-    col1, col2 = st.columns([1, 2])
-    with col1:
-        gerar = st.button("Gerar Insights IA", use_container_width=True)
-    with col2:
-        st.caption("Se não sair nada, falta configurar a API Key (sidebar).")
-
-    if "ia_texto" not in st.session_state:
-        st.session_state["ia_texto"] = ""
-
-    if gerar:
-        if not api_key_ia:
-            st.warning("Falta a OpenAI API Key. Cole na sidebar (campo 'OpenAI API Key') ou configure no env.")
-        else:
+        if not out_text:
+            # fallback: varre a estrutura
             try:
-                with st.spinner("Gerando insights..."):
-                    texto = call_openai_insights(api_key_ia, modelo_ia, payload_texto)
-                st.session_state["ia_texto"] = texto
-            except Exception as e:
-                st.error(str(e))
+                for item in resp.output:
+                    if item.get("type") == "message":
+                        for c in item.get("content", []):
+                            if c.get("type") in ("output_text", "text"):
+                                out_text += c.get("text", "") + "\n"
+            except Exception:
+                pass
 
-    if st.session_state.get("ia_texto"):
-        st.text_area("Insights IA (salvo até você gerar de novo)", value=st.session_state["ia_texto"], height=220)
+        st.success("Insights gerados:")
+        st.markdown(out_text if out_text else "_Não consegui extrair texto do retorno. Se acontecer, me mande o log do resp._")
 
 # ==============================
 # Main
-# - Sidebar com pagina + modo resumo
-# - Dashboard preservado (cards)
 # ==============================
 def main():
     aplicar_css_app()
 
-    # ✅ Autorefresh com key fixa (evita DuplicateElementKey)
+    # ✅ autorefresh com key fixa
     if AUTORELOAD_AVAILABLE:
         st_autorefresh(interval=60000, key="autorefresh_onepage_linhas")
 
-    now = datetime.datetime.now(TZ)
-    hoje = now.date()
+    agora = datetime.datetime.now(TZ)
+    hoje = agora.date()
 
-    # ==========================
-    # Sidebar: navegação
-    # ==========================
+    # Sidebar: navegação + filtros
     st.sidebar.markdown("## Menu")
-    pagina = st.sidebar.radio("Página", ["Dashboard", "Resumo + IA"], index=0)
+    default_resumo = (agora.hour >= 16)
+
+    page_options = ["One Page (TV)", "Resumo Mensal + IA"]
+    page_default_index = 1 if default_resumo else 0
+    pagina = st.sidebar.radio("Página", page_options, index=page_default_index)
 
     st.sidebar.markdown("---")
-    st.sidebar.markdown("## Filtro (Data)")
+    st.sidebar.markdown("### Filtro (Data) — One Page")
     data_inicio = st.sidebar.date_input("Início", hoje, key="f_ini")
     data_fim = st.sidebar.date_input("Fim", hoje, key="f_fim")
 
     if st.sidebar.button("Atualizar agora"):
         st.cache_data.clear()
 
-    # ==========================
-    # Sidebar: Resumo + IA
-    # ==========================
-    st.sidebar.markdown("---")
-    st.sidebar.markdown("## IA (opcional)")
-    # permite colar sem saber env
-    if "openai_key_ui" not in st.session_state:
-        st.session_state["openai_key_ui"] = ""
-
-    openai_key_ui = st.sidebar.text_input(
-        "OpenAI API Key",
-        value=st.session_state["openai_key_ui"],
-        type="password",
-        help="Cole aqui para habilitar IA (não aparece na tela). Depois te mostro como pôr no env."
-    )
-    st.session_state["openai_key_ui"] = openai_key_ui
-
-    modelo_ia = st.sidebar.text_input("Modelo", value=os.getenv("OPENAI_MODEL", "gpt-4o-mini"))
-
-    st.sidebar.markdown("---")
-    st.sidebar.markdown("## Resumo (Auto 16h)")
-    modo_resumo = st.sidebar.selectbox(
-        "Modo do resumo",
-        ["Auto (>=16h = mês)", "Dia (manual)", "Mês atual"],
-        index=0
-    )
-
-    # ==========================
-    # Topo
-    # ==========================
+    # Header
     st.markdown("<div class='op-title'>ONE PAGE GERENCIAL — LINHAS</div>", unsafe_allow_html=True)
-    st.markdown(
-        f"<div class='op-sub'>Período: <b>{data_inicio}</b> até <b>{data_fim}</b></div>",
-        unsafe_allow_html=True
-    )
 
-    # ==========================
-    # DASHBOARD (1ª página) - PRESERVADO
-    # ==========================
-    if pagina == "Dashboard":
-        # ✅ Placeholder: renderiza último HTML primeiro (evita ficar branco durante atualização)
-        ph = st.empty()
-
-        if "last_html" in st.session_state and "last_height" in st.session_state:
-            with ph.container():
-                components.html(st.session_state["last_html"], height=st.session_state["last_height"], scrolling=False)
-
-        resumos = [
-            resumo_esteira(data_inicio, data_fim),
-            resumo_mola(data_inicio, data_fim),
-            resumo_manga_pnm(data_inicio, data_fim),
-        ]
-
-        html, height = render_onepage_html(resumos)
-
-        with ph.container():
-            components.html(html, height=height, scrolling=False)
-
-        st.session_state["last_html"] = html
-        st.session_state["last_height"] = height
-
-    # ==========================
-    # RESUMO + IA (2ª página) - NOVO
-    # ==========================
-    else:
-        # define período do resumo
-        if modo_resumo == "Mês atual" or (modo_resumo.startswith("Auto") and now.hour >= 16):
-            ini = now.replace(day=1).date()
-            fim = now.date()
-        else:
-            ini = data_inicio
-            fim = data_fim
-
-        # pega key da UI ou do env
-        api_key_ia = (openai_key_ui or os.getenv("OPENAI_API_KEY", "")).strip()
-
-        render_resumo_com_ia(
-            data_inicio=ini,
-            data_fim=fim,
-            api_key_ia=api_key_ia,
-            modelo_ia=modelo_ia.strip() or "gpt-4o-mini"
+    if pagina == "One Page (TV)":
+        st.markdown(
+            f"<div class='op-sub'>Período: <b>{data_inicio}</b> até <b>{data_fim}</b></div>",
+            unsafe_allow_html=True
         )
+        page_onepage(data_inicio, data_fim)
+    else:
+        st.markdown(
+            f"<div class='op-sub'>Modo: <b>Resumo Mensal + IA</b></div>",
+            unsafe_allow_html=True
+        )
+        page_resumo_ia()
 
-    # ==========================
-    # Rodapé
-    # ==========================
-    hora = now.strftime("%H:%M:%S")
+    hora = agora.strftime("%H:%M:%S")
     st.markdown(
         f"<p style='color:rgba(11,27,51,0.55);text-align:center;margin-top:10px;'>Atualizado às <b>{hora}</b></p>",
         unsafe_allow_html=True
