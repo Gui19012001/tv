@@ -41,12 +41,13 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 TZ = pytz.timezone("America/Sao_Paulo")
 
 # ==============================
-# CSS APP
+# CSS APP (FUNDO BRANCO + CARD NAVY GRADIENT)
 # ==============================
 def aplicar_css_app():
     st.markdown(
         """
         <style>
+        /* Layout base */
         .block-container {
             padding-top: 0.6rem;
             padding-bottom: 0.8rem;
@@ -58,6 +59,7 @@ def aplicar_css_app():
         div[data-testid="stToolbar"] {visibility:hidden;height:0%;position:fixed;}
         section[data-testid='stSidebar']{display:none;}
 
+        /* FUNDO BRANCO CLEAN */
         .stApp {
             background: linear-gradient(180deg, #ffffff 0%, #f6f8fb 100%);
         }
@@ -65,7 +67,7 @@ def aplicar_css_app():
         .op-title {
             font-size: 22px;
             font-weight: 900;
-            color: #EAF2FF;
+            color: #0B1B33; /* navy */
             letter-spacing: 0.5px;
             margin: 2px 0 6px 0;
         }
@@ -83,12 +85,12 @@ def _parse_datahora(df: pd.DataFrame, col: str = "data_hora") -> pd.DataFrame:
 
     dt = pd.to_datetime(df[col], errors="coerce")
 
-    # Se já vier com timezone (ex: "...Z" ou offset)
+    # já vem com tz
     if getattr(dt.dt, "tz", None) is not None:
         df[col] = dt.dt.tz_convert(TZ)
         return df
 
-    # Se veio "naive" (sem tz), assume local
+    # vem naive
     df[col] = dt.dt.tz_localize(TZ)
     return df
 
@@ -99,7 +101,6 @@ def _load_table_paged(table_name: str, date_col="data_hora") -> pd.DataFrame:
     data_total = []
     inicio = 0
     passo = 1000
-
     while True:
         resp = supabase.table(table_name).select("*").range(inicio, inicio + passo - 1).execute()
         dados = resp.data
@@ -150,7 +151,6 @@ def filtrar_periodo(df: pd.DataFrame, data_inicio: datetime.date, data_fim: date
 
 def calcular_meta_acumulada_por_hora(meta_hora: dict, hoje: datetime.date, hora_atual: datetime.datetime, modo="fim_hora") -> int:
     meta_acumulada = 0
-
     if modo == "inicio_hora":
         hora_atual_fechada = hora_atual.replace(minute=0, second=0, microsecond=0)
         for h, m in meta_hora.items():
@@ -166,7 +166,6 @@ def calcular_meta_acumulada_por_hora(meta_hora: dict, hoje: datetime.date, hora_
                 horario_fim = TZ.localize(horario_fim)
             if hora_atual >= horario_fim:
                 meta_acumulada += int(m)
-
     return int(meta_acumulada)
 
 def calcular_aprovacao(df_checks: pd.DataFrame, df_apont: pd.DataFrame) -> tuple[float, int]:
@@ -211,7 +210,7 @@ def calcular_oee(atraso: int, meta_acumulada: int, aprovacao_perc: float) -> flo
     return float(performance_fraction * quality_fraction * 100)
 
 # ==============================
-# Resumos (3 cards: Esteira, Mola, Manga & PNM)
+# Resumos (3 cards: Esteira, Mola, Manga&PNM)
 # ==============================
 def resumo_esteira(data_inicio: datetime.date, data_fim: datetime.date) -> dict:
     hoje = datetime.datetime.now(TZ).date()
@@ -220,7 +219,6 @@ def resumo_esteira(data_inicio: datetime.date, data_fim: datetime.date) -> dict:
     df_apont = filtrar_periodo(carregar_apontamentos_esteira(), data_inicio, data_fim)
     df_checks = filtrar_periodo(carregar_checklists_esteira(), data_inicio, data_fim)
 
-    # ESTEIRA/EIXO na base geral
     if not df_apont.empty and "tipo_producao" in df_apont.columns:
         df_apont = df_apont[df_apont["tipo_producao"].astype(str).str.contains("ESTEIRA|EIXO", case=False, na=False)]
 
@@ -304,13 +302,13 @@ def resumo_manga_pnm(data_inicio: datetime.date, data_fim: datetime.date) -> dic
     aprov, insp = calcular_aprovacao(df_checks, df_apont)
     oee = calcular_oee(atraso, meta_acum, aprov)
 
-    # rodapé: contagem separada pra mostrar, mas sem separar card
     total_manga = total_pnm = 0
     if not df_apont.empty and "tipo_producao" in df_apont.columns:
-        total_manga = int(df_apont["tipo_producao"].astype(str).str.contains("MANGA", case=False, na=False).sum())
-        total_pnm = int(df_apont["tipo_producao"].astype(str).str.contains("PNM", case=False, na=False).sum())
+        df_manga = df_apont[df_apont["tipo_producao"].astype(str).str.contains("MANGA", case=False, na=False)]
+        df_pnm = df_apont[df_apont["tipo_producao"].astype(str).str.contains("PNM", case=False, na=False)]
+        total_manga, total_pnm = int(len(df_manga)), int(len(df_pnm))
 
-    rodape = f"MANGA: {total_manga} | PNM: {total_pnm}" if (total_manga + total_pnm) > 0 else ""
+    rodape = f"MANGA: {total_manga} | PNM: {total_pnm}"
 
     return {
         "key": "manga_pnm",
@@ -325,10 +323,10 @@ def resumo_manga_pnm(data_inicio: datetime.date, data_fim: datetime.date) -> dic
     }
 
 # ==============================
-# ONEPAGE (1 iframe, 3 cards alinhados)
+# ONEPAGE HTML
 # ==============================
 def render_onepage_html(resumos: list[dict]):
-    # ✅ altura um pouco maior pra garantir que nada fique fora
+    # 3 cards => fica perfeito em TV (sem “sumir” coluna)
     HEIGHT = 420
 
     js_data = [{"key": r["key"], "oee": round(float(r["oee"]), 1)} for r in resumos]
@@ -336,8 +334,8 @@ def render_onepage_html(resumos: list[dict]):
     def pill_for(r: dict) -> tuple[str, str, str]:
         status_ok = (int(r.get("atraso", 0)) == 0) and ("sem fonte" not in str(r.get("status", "")).lower())
         if status_ok:
-            return "OK", "rgba(56,161,105,0.25)", "rgba(56,161,105,0.55)"
-        return "ATENÇÃO", "rgba(197,48,48,0.22)", "rgba(197,48,48,0.55)"
+            return "OK", "rgba(56,161,105,0.18)", "rgba(56,161,105,0.40)"
+        return "ATENÇÃO", "rgba(197,48,48,0.14)", "rgba(197,48,48,0.38)"
 
     cards_html = []
     for r in resumos:
@@ -377,6 +375,9 @@ def render_onepage_html(resumos: list[dict]):
                   <div class="mini-val" style="font-size:16px;">{float(r["oee"]):.1f}%</div>
                 </div>
                 <div id="g_{r["key"]}" class="gauge"></div>
+                <div class="gauge-axis">
+                  <span>0%</span><span>100%</span>
+                </div>
               </div>
             </div>
           </div>
@@ -387,7 +388,7 @@ def render_onepage_html(resumos: list[dict]):
       <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
 
       <style>
-        /* ✅ 3 COLUNAS FIXAS (esteira / mola / manga&pnm) */
+        /* 3 colunas (clean e garante aparecer tudo) */
         .grid-3 {{
           display:grid;
           grid-template-columns: repeat(3, 1fr);
@@ -395,14 +396,14 @@ def render_onepage_html(resumos: list[dict]):
           align-items: stretch;
         }}
 
+        /* CARD NAVY GRADIENT (o que você pediu) */
         .card {{
           border-radius:22px;
-          padding:14px 14px 12px 14px;
-          background: rgba(255,255,255,0.06);
-          border: 1px solid rgba(255,255,255,0.10);
-          box-shadow: 0 14px 30px rgba(0,0,0,0.35);
-          backdrop-filter: blur(10px);
-          height: 330px;
+          padding:16px 16px 14px 16px;
+          background: linear-gradient(135deg, #0B1B33 0%, #0A2A4A 55%, #093A5A 100%);
+          border: 1px solid rgba(11,27,51,0.25);
+          box-shadow: 0 14px 30px rgba(8,16,32,0.18);
+          height: 340px;
           overflow: hidden;
           color: white;
           font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial;
@@ -413,19 +414,19 @@ def render_onepage_html(resumos: list[dict]):
           align-items:flex-start;
           justify-content:space-between;
           gap:10px;
-          margin-bottom:10px;
+          margin-bottom:12px;
         }}
 
         .title {{
           font-size:14px;
           font-weight:950;
-          color:#EAF2FF;
+          color:#F3F7FF;
           text-transform:uppercase;
           line-height:1.05;
         }}
         .sub {{
           font-size:12px;
-          color: rgba(255,255,255,0.70);
+          color: rgba(255,255,255,0.78);
           margin-top:3px;
         }}
 
@@ -434,44 +435,45 @@ def render_onepage_html(resumos: list[dict]):
           font-weight:950;
           padding:6px 10px;
           border-radius:999px;
-          color:#EAF2FF;
+          color:#F3F7FF;
           white-space:nowrap;
         }}
 
+        /* minis em navy mais escuro (clean) */
         .mini-grid {{
           display:grid;
           grid-template-columns: 1fr 1fr;
-          gap: 10px;
+          gap: 12px;
         }}
 
         .mini {{
           border-radius:18px;
-          padding:10px 12px;
-          background: rgba(0,0,0,0.28);
+          padding:12px 14px;
+          background: rgba(0,0,0,0.22);
           border:1px solid rgba(255,255,255,0.10);
-          height: 96px;
+          height: 106px;
           overflow:hidden;
         }}
 
         .mini-title {{
           font-size:11px;
           font-weight:950;
-          color:rgba(255,255,255,0.84);
+          color:rgba(255,255,255,0.86);
           margin-bottom:6px;
           text-transform:uppercase;
-          letter-spacing: .2px;
+          letter-spacing: .25px;
         }}
 
         .mini-val {{
-          font-size:18px;
+          font-size:20px;
           font-weight:950;
           line-height:1.05;
         }}
 
         .mini-foot {{
           font-size:11px;
-          color:rgba(255,255,255,0.70);
-          margin-top:4px;
+          color:rgba(255,255,255,0.72);
+          margin-top:5px;
           white-space:nowrap;
           overflow:hidden;
           text-overflow:ellipsis;
@@ -484,15 +486,25 @@ def render_onepage_html(resumos: list[dict]):
           gap:10px;
         }}
 
+        /* ✅ gauge maior + espaço pro “0% / 100%” */
         .gauge {{
-          height: 64px;
+          height: 72px;
           width: 100%;
           margin-top: 2px;
         }}
+        .gauge-axis {{
+          margin-top: 2px;
+          display:flex;
+          justify-content:space-between;
+          font-size:10px;
+          color: rgba(255,255,255,0.70);
+          padding: 0 2px;
+        }}
 
-        /* ✅ se a tela for realmente pequena, cai para 2 colunas (raramente em TV) */
-        @media (max-width: 1100px) {{
-          .grid-3 {{ grid-template-columns: repeat(2, 1fr); }}
+        /* Responsivo */
+        @media (max-width: 1400px) {{
+          .grid-3 {{ grid-template-columns: 1fr; }}
+          .card {{ height: 340px; }}
         }}
       </style>
 
@@ -509,7 +521,7 @@ def render_onepage_html(resumos: list[dict]):
             mode: "gauge",
             value: val,
             gauge: {{
-              axis: {{ range: [0, 100], tickwidth: 0, ticklen: 0 }},
+              axis: {{ range: [0, 100], tickwidth: 0, ticklen: 0, showticklabels: false }},
               bar: {{ color: "#1E90FF", thickness: 0.35 }},
               steps: [
                 {{ range: [0, 60], color: "#FF4C4C" }},
@@ -528,7 +540,7 @@ def render_onepage_html(resumos: list[dict]):
             margin: {{ l: 0, r: 0, t: 0, b: 0 }},
             paper_bgcolor: "rgba(0,0,0,0)",
             plot_bgcolor: "rgba(0,0,0,0)",
-            height: 64
+            height: 72
           }};
 
           Plotly.newPlot(id, data, layout, {{displayModeBar:false, responsive:true}});
@@ -548,7 +560,7 @@ def main():
     aplicar_css_app()
 
     if AUTORELOAD_AVAILABLE:
-        refresh_key = f"autorefresh_{Path(__file__).stem}_onepage"
+        refresh_key = f"autorefresh_{Path(__file__).stem}"
         st_autorefresh(interval=60000, key=refresh_key)
 
     hoje = datetime.datetime.now(TZ).date()
@@ -570,7 +582,7 @@ def main():
 
     st.markdown("<div class='op-title'>ONE PAGE GERENCIAL — LINHAS</div>", unsafe_allow_html=True)
     st.markdown(
-        f"<div style='color:rgba(255,255,255,0.70); margin-bottom:10px;'>Período: <b>{data_inicio}</b> até <b>{data_fim}</b></div>",
+        f"<div style='color:rgba(11,27,51,0.70); margin-bottom:12px;'>Período: <b>{data_inicio}</b> até <b>{data_fim}</b></div>",
         unsafe_allow_html=True
     )
 
@@ -585,7 +597,7 @@ def main():
 
     hora = datetime.datetime.now(TZ).strftime("%H:%M:%S")
     st.markdown(
-        f"<p style='color:rgba(255,255,255,0.55);text-align:center;margin-top:10px;'>Atualizado às <b>{hora}</b></p>",
+        f"<p style='color:rgba(11,27,51,0.55);text-align:center;margin-top:12px;'>Atualizado às <b>{hora}</b></p>",
         unsafe_allow_html=True
     )
 
