@@ -59,7 +59,7 @@ def aplicar_css_app():
         section[data-testid='stSidebar']{display:none;}
 
         .stApp {
-            background: #ffffff;
+            background: linear-gradient(180deg, #ffffff 0%, #f6f8fb 100%);
         }
 
         .op-title {
