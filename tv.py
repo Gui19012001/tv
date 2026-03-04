@@ -635,7 +635,7 @@ def render_onepage_html(resumos: list[dict]) -> tuple[str, int]:
         /* ✅ TV: mantém 3 cards SEMPRE */
         .grid-3 {{
           display: grid;
-          grid-template-columns: repeat(3, minmax(320px, 1fr));
+          grid-template-columns: repeat(3, minmax(280px, 1fr));
           gap: 26px;
           align-items: stretch;
           width: 100%;
