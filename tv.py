@@ -583,7 +583,7 @@ def resumo_manga_pnm(data_inicio: datetime.date, data_fim: datetime.date) -> dic
 # ✅ PÁGINA 1 (INTACTA) - HTML DOS 3 CARDS
 # ==============================
 def render_onepage_html(resumos: list[dict]) -> tuple[str, int]:
-    HEIGHT = 200
+    HEIGHT = 430
     js_data = [{"key": r["key"], "oee": round(float(r["oee"]), 1)} for r in resumos]
 
     def pill_for(r: dict) -> tuple[str, str, str]:
