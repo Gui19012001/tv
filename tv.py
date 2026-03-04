@@ -75,7 +75,7 @@ def aplicar_css_app():
         .block-container{
             max-width: 100% !important;
             padding-left: 0.10rem !important;
-            padding-right: 0.30rem !important;
+            padding-right: 0.00rem !important;
             padding-top: 0.8rem;
             padding-bottom: 0.8rem;
         }
