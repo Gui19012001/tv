@@ -796,7 +796,7 @@ def render_onepage_html(resumos: list[dict]) -> tuple[str, int]:
         const dados = {js_data};
 
         function calcScale() {{
-          const vw = (window.innerWidth || document.documentElement.clientWidth || {BASE_W}) - 30;
+          const vw = (window.innerWidth || document.documentElement.clientWidth || {BASE_W}) - 20;
           const s = Math.min(1, vw / {BASE_W});
           document.documentElement.style.setProperty("--scale", s.toFixed(4));
         }}
