@@ -654,7 +654,7 @@ def render_onepage_html(resumos: list[dict]) -> tuple[str, int]:
     # ✅ AUTO-SCALE:
     # - desenha em largura base (BASE_W)
     # - aplica scale = min(1, viewport/BASE_W)
-    BASE_W = 1500  # largura base de design pros 3 cards
+    BASE_W = 1000  # largura base de design pros 3 cards
     BASE_H = 500   # altura base do grid dentro do iframe
 
     html = f"""
