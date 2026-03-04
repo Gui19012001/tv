@@ -74,8 +74,8 @@ def aplicar_css_app():
         }
         .block-container{
             max-width: 100% !important;
-            padding-left: 0.05rem !important;
-            padding-right: 0.05rem !important;
+            padding-left: 0.25rem !important;
+            padding-right: 0.25rem !important;
             padding-top: 0.8rem;
             padding-bottom: 0.8rem;
         }
@@ -589,10 +589,11 @@ def resumo_manga_pnm(data_inicio: datetime.date, data_fim: datetime.date) -> dic
 
 # ==============================
 # ✅ PÁGINA 1 (INTACTA) - HTML DOS 3 CARDS
+# ✅ TV: FORÇA 3 colunas usando AUTO-SCALE
 # ==============================
 def render_onepage_html(resumos: list[dict]) -> tuple[str, int]:
-    # ✅ TV: iframe mais alto
-    HEIGHT = 560
+    # altura do iframe (um pouco maior pra acomodar o scale)
+    HEIGHT = 520
 
     js_data = [{"key": r["key"], "oee": round(float(r["oee"]), 1)} for r in resumos]
 
@@ -650,33 +651,46 @@ def render_onepage_html(resumos: list[dict]) -> tuple[str, int]:
           </div>
         """)
 
-    # ✅ TV FIX PRINCIPAL:
-    # - grid sempre 3 colunas (remove @media que derrubava pra 2)
-    # - minmax maior pra não ficar “magro”
+    # ✅ AUTO-SCALE:
+    # - desenha em largura base (BASE_W)
+    # - aplica scale = min(1, viewport/BASE_W)
+    BASE_W = 1680  # largura base de design pros 3 cards
+    BASE_H = 380   # altura base do grid dentro do iframe
+
     html = f"""
-    <div style="width:100%; max-width:100%;">
+    <div id="wrap" style="width:100%; max-width:100%; overflow:hidden;">
       <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
 
       <style>
+        :root {{
+          --scale: 1;
+        }}
+
+        /* Conteúdo em tamanho base; TV reduz com scale */
+        #stage {{
+          width: {BASE_W}px;
+          transform: scale(var(--scale));
+          transform-origin: top left;
+        }}
+
         .grid-3 {{
           display: grid;
-          grid-template-columns: repeat(3, minmax(280px, 1fr));
-          gap: 12px;
-          align-items: stretch;
-          width: 100%;
-          max-width: 100%;
+          grid-template-columns: repeat(3, 1fr); /* ✅ sempre 3 */
+          gap: 26px;
+          width: {BASE_W}px;
         }}
 
         .card {{
           border-radius: 22px;
-          padding: 20px;
+          padding: 16px;
           background: linear-gradient(135deg, #071124 0%, #0B1B33 55%, #093A5A 100%);
           border: 1px solid rgba(255,255,255,0.10);
           box-shadow: 0 14px 26px rgba(0,0,0,0.18);
-          height: 385px;
+          height: 345px;
           overflow: hidden;
           color: white;
           font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial;
+          min-width: 0;
         }}
 
         .head {{
@@ -717,11 +731,12 @@ def render_onepage_html(resumos: list[dict]) -> tuple[str, int]:
 
         .mini {{
           border-radius:18px;
-          padding:14px 14px;
+          padding:12px 14px;
           background: rgba(255,255,255,0.06);
           border:1px solid rgba(255,255,255,0.10);
-          height: 118px;
+          height: 108px;
           overflow:hidden;
+          min-width: 0;
         }}
 
         .mini-title {{
@@ -734,7 +749,7 @@ def render_onepage_html(resumos: list[dict]) -> tuple[str, int]:
         }}
 
         .mini-val {{
-          font-size:22px;
+          font-size:20px;
           font-weight:950;
           line-height:1.05;
         }}
@@ -742,7 +757,7 @@ def render_onepage_html(resumos: list[dict]) -> tuple[str, int]:
         .mini-foot {{
           font-size:11px;
           color:rgba(255,255,255,0.72);
-          margin-top:6px;
+          margin-top:5px;
           white-space:nowrap;
           overflow:hidden;
           text-overflow:ellipsis;
@@ -756,7 +771,7 @@ def render_onepage_html(resumos: list[dict]) -> tuple[str, int]:
         }}
 
         .gauge {{
-          height: 88px;
+          height: 76px;
           width: 100%;
           margin-top: 2px;
         }}
@@ -771,12 +786,20 @@ def render_onepage_html(resumos: list[dict]) -> tuple[str, int]:
         }}
       </style>
 
-      <div class="grid-3">
-        {''.join(cards_html)}
+      <div id="stage">
+        <div class="grid-3">
+          {''.join(cards_html)}
+        </div>
       </div>
 
       <script>
         const dados = {js_data};
+
+        function calcScale() {{
+          const vw = window.innerWidth || document.documentElement.clientWidth || {BASE_W};
+          const s = Math.min(1, vw / {BASE_W});
+          document.documentElement.style.setProperty("--scale", s.toFixed(4));
+        }}
 
         function renderGauge(id, val) {{
           const data = [{{
@@ -803,12 +826,19 @@ def render_onepage_html(resumos: list[dict]) -> tuple[str, int]:
             margin: {{ l: 0, r: 0, t: 0, b: 0 }},
             paper_bgcolor: "rgba(0,0,0,0)",
             plot_bgcolor: "rgba(0,0,0,0)",
-            height: 88
+            height: 76
           }};
 
           Plotly.newPlot(id, data, layout, {{displayModeBar:false, responsive:true}});
         }}
 
+        // escala primeiro
+        calcScale();
+        window.addEventListener("resize", () => {{
+          calcScale();
+        }});
+
+        // gauges
         dados.forEach(d => renderGauge("g_" + d.key, d.oee));
       </script>
     </div>
@@ -819,7 +849,11 @@ def page_onepage(data_inicio: datetime.date, data_fim: datetime.date):
     ph = st.empty()
     if "last_html_onepage" in st.session_state and "last_height_onepage" in st.session_state:
         with ph.container():
-            components.html(st.session_state["last_html_onepage"], height=st.session_state["last_height_onepage"], scrolling=False)
+            components.html(
+                st.session_state["last_html_onepage"],
+                height=st.session_state["last_height_onepage"],
+                scrolling=False
+            )
 
     resumos = [
         resumo_total_apontamentos(data_inicio, data_fim),
