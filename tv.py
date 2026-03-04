@@ -652,10 +652,8 @@ def render_onepage_html(resumos: list[dict]) -> tuple[str, int]:
         """)
 
     # ✅ AUTO-SCALE:
-    # - desenha em largura base (BASE_W)
-    # - aplica scale = min(1, viewport/BASE_W)
     BASE_W = 1000  # largura base de design pros 3 cards
-    BASE_H = 300   # altura base do grid dentro do iframe
+    BASE_H = 300   # (não usado aqui, mas mantive igual ao seu)
 
     html = f"""
     <div id="wrap" style="width:100%; max-width:100%; overflow:hidden;">
@@ -754,13 +752,20 @@ def render_onepage_html(resumos: list[dict]) -> tuple[str, int]:
           line-height:1.05;
         }}
 
+        /* ✅ ATUALIZADO: mini-foot em até 2 linhas (sem cortar) */
         .mini-foot {{
-          font-size:11px;
-          color:rgba(255,255,255,0.72);
-          margin-top:5px;
-          white-space:nowrap;
-          overflow:hidden;
-          text-overflow:ellipsis;
+          font-size: 11px;
+          color: rgba(255,255,255,0.72);
+          margin-top: 6px;
+
+          white-space: normal;
+          overflow: hidden;
+
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+
+          word-break: break-word;
         }}
 
         .oee-row {{
