@@ -326,9 +326,7 @@ def resumo_manga_pnm(data_inicio: datetime.date, data_fim: datetime.date) -> dic
 # ONEPAGE HTML
 # ==============================
 def render_onepage_html(resumos: list[dict]):
-    # 3 cards => fica perfeito em TV (sem “sumir” coluna)
     HEIGHT = 420
-
     js_data = [{"key": r["key"], "oee": round(float(r["oee"]), 1)} for r in resumos]
 
     def pill_for(r: dict) -> tuple[str, str, str]:
@@ -375,9 +373,7 @@ def render_onepage_html(resumos: list[dict]):
                   <div class="mini-val" style="font-size:16px;">{float(r["oee"]):.1f}%</div>
                 </div>
                 <div id="g_{r["key"]}" class="gauge"></div>
-                <div class="gauge-axis">
-                  <span>0%</span><span>100%</span>
-                </div>
+                <div class="gauge-axis"><span>0%</span><span>100%</span></div>
               </div>
             </div>
           </div>
@@ -388,15 +384,15 @@ def render_onepage_html(resumos: list[dict]):
       <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
 
       <style>
-        /* 3 colunas (clean e garante aparecer tudo) */
+        /* ✅ 3 cards SEMPRE lado a lado (enquanto houver largura) */
         .grid-3 {{
-          display:grid;
-          grid-template-columns: repeat(3, 1fr);
+          display: grid;
+          grid-template-columns: repeat(3, minmax(320px, 1fr));
           gap: 26px;
           align-items: stretch;
+          width: 100%;
         }}
 
-        /* CARD NAVY GRADIENT (o que você pediu) */
         .card {{
           border-radius:22px;
           padding:16px 16px 14px 16px;
@@ -439,7 +435,6 @@ def render_onepage_html(resumos: list[dict]):
           white-space:nowrap;
         }}
 
-        /* minis em navy mais escuro (clean) */
         .mini-grid {{
           display:grid;
           grid-template-columns: 1fr 1fr;
@@ -486,12 +481,12 @@ def render_onepage_html(resumos: list[dict]):
           gap:10px;
         }}
 
-        /* ✅ gauge maior + espaço pro “0% / 100%” */
         .gauge {{
           height: 72px;
           width: 100%;
           margin-top: 2px;
         }}
+
         .gauge-axis {{
           margin-top: 2px;
           display:flex;
@@ -501,10 +496,12 @@ def render_onepage_html(resumos: list[dict]):
           padding: 0 2px;
         }}
 
-        /* Responsivo */
-        @media (max-width: 1400px) {{
+        /* ✅ só quebra se a tela for realmente pequena */
+        @media (max-width: 1200px) {{
+          .grid-3 {{ grid-template-columns: repeat(2, minmax(320px, 1fr)); }}
+        }}
+        @media (max-width: 820px) {{
           .grid-3 {{ grid-template-columns: 1fr; }}
-          .card {{ height: 340px; }}
         }}
       </style>
 
@@ -552,7 +549,6 @@ def render_onepage_html(resumos: list[dict]):
     """
 
     components.html(html, height=HEIGHT, scrolling=False)
-
 # ==============================
 # Main
 # ==============================
