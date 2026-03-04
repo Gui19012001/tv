@@ -5,3 +5,4 @@ pytz
 supabase
 python-dotenv
 streamlit-autorefresh
+openai
