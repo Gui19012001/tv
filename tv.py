@@ -59,9 +59,7 @@ def aplicar_css_app():
         section[data-testid='stSidebar']{display:none;}
 
         .stApp {
-            background: radial-gradient(circle at 15% 15%, rgba(64,93,230,0.55), rgba(0,0,0,0) 40%),
-                        radial-gradient(circle at 85% 25%, rgba(0,255,200,0.18), rgba(0,0,0,0) 40%),
-                        linear-gradient(135deg, #05070d 0%, #071124 55%, #0a1630 100%);
+            background: #ffffff;
         }
 
         .op-title {
