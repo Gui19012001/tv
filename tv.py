@@ -648,7 +648,7 @@ def render_onepage_html(resumos: list[dict]) -> tuple[str, int]:
         .grid-3 {{
           display: grid;
           grid-template-columns: repeat(3, minmax(360px, 1fr));
-          gap: 26px;
+          gap: 18px;
           align-items: stretch;
           width: 100%;
         }}
