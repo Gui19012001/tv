@@ -549,7 +549,7 @@ def resumo_manga_pnm(data_inicio: datetime.date, data_fim: datetime.date) -> dic
         datetime.time(6, 0): 4, datetime.time(7, 0): 4, datetime.time(8, 0): 4,
         datetime.time(9, 0): 4, datetime.time(10, 0): 4, datetime.time(11, 0): 0,
         datetime.time(12, 0): 4, datetime.time(13, 0): 4, datetime.time(14, 0): 4,
-        datetime.time(15, 0): 4,
+        datetime.time(15, 0): 2,
     }
 
     total = int(len(df_apont))
