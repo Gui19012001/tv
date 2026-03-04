@@ -61,69 +61,98 @@ if OPENAI_AVAILABLE and OPENAI_API_KEY:
 # + mantém botão do sidebar acessível
 # + reduz “piscada” (sem esconder header totalmente)
 # ==============================
-def aplicar_css_app():
-    st.markdown(
-        """
-        <style>
-        .block-container {
-            padding-top: 0.8rem;
-            padding-bottom: 0.8rem;
-            padding-left: 1.2rem;
-            padding-right: 1.2rem;
-            max-width: 100%;
-        }
+def _badge_perf(pct: float) -> str:
+    if pct >= 100:
+        return "ACIMA DA META"
+    if pct >= 95:
+        return "MUITO PRÓXIMO"
+    if pct >= 85:
+        return "ABAIXO"
+    return "CRÍTICO"
 
-        /* Não “mata” o header (senão some o botão do sidebar) */
-        header[data-testid="stHeader"] {
-            background: transparent;
-            border: none;
-        }
+def _badge_qual(pct: float) -> str:
+    if pct >= 98:
+        return "EXCELENTE"
+    if pct >= 95:
+        return "OK"
+    if pct >= 90:
+        return "ATENÇÃO"
+    return "CRÍTICO"
 
-        /* Esconde toolbar, mas mantém header vivo */
-        div[data-testid="stToolbar"] {visibility:hidden;height:0;position:fixed;}
+# ... dentro de page_resumo_ia(), depois de calcular perf_total/perf_mola/perf_mp e q_total/q_mola/q_mp ...
 
-        /* Deixa o botão do sidebar sempre acessível */
-        button[data-testid="stSidebarCollapseButton"]{
-            position: fixed !important;
-            top: 12px !important;
-            left: 10px !important;
-            z-index: 999999 !important;
-            opacity: 0.35;
-            transform: scale(1.05);
-        }
-        button[data-testid="stSidebarCollapseButton"]:hover{opacity: 1;}
+st.markdown(
+    f"""
+    <div class="sum-grid">
+      <div class="sum-card">
+        <div class="sum-head">TOTAL (Apontamentos)</div>
 
-        /* Reduz widgets/efeitos visuais de status */
-        div[data-testid="stStatusWidget"] {display:none !important;}
-        div[data-testid="stDecoration"] {display:none !important;}
+        <div class="sum-row">
+          <div>
+            <div class="sum-kpi">{perf_total:.1f}%</div>
+            <div class="sum-sub">Performance do mês</div>
+            <div class="sum-sub">Produzido: {prod_total} • Meta: {meta_total_mes}</div>
+          </div>
+          <div class="sum-badge">{_badge_perf(perf_total)}</div>
+        </div>
 
-        /* Fundo branco clean */
-        .stApp {
-            background: #F6F7FB;
-        }
+        <div class="sum-row">
+          <div>
+            <div class="sum-kpi">{q_total:.1f}%</div>
+            <div class="sum-sub">Qualidade do mês</div>
+            <div class="sum-sub">Inspec.: {insp_total} • Reprov.: {rep_total}</div>
+          </div>
+          <div class="sum-badge">{_badge_qual(q_total)}</div>
+        </div>
+      </div>
 
-        .op-title {
-            font-size: 22px;
-            font-weight: 900;
-            color: #0B1B33;
-            letter-spacing: 0.4px;
-            margin: 2px 0 4px 0;
-        }
+      <div class="sum-card">
+        <div class="sum-head">MOLA</div>
 
-        .op-sub {
-            color: rgba(11,27,51,0.70);
-            margin-bottom: 10px;
-        }
+        <div class="sum-row">
+          <div>
+            <div class="sum-kpi">{perf_mola:.1f}%</div>
+            <div class="sum-sub">Performance do mês</div>
+            <div class="sum-sub">Produzido: {prod_mola} • Meta: {meta_mola_mes}</div>
+          </div>
+          <div class="sum-badge">{_badge_perf(perf_mola)}</div>
+        </div>
 
-        /* Sidebar clean */
-        section[data-testid="stSidebar"] {
-            background: #FFFFFF;
-            border-right: 1px solid rgba(11,27,51,0.10);
-        }
-        </style>
-        """,
-        unsafe_allow_html=True
-    )
+        <div class="sum-row">
+          <div>
+            <div class="sum-kpi">{q_mola:.1f}%</div>
+            <div class="sum-sub">Qualidade do mês</div>
+            <div class="sum-sub">Inspec.: {insp_mola} • Reprov.: {rep_mola}</div>
+          </div>
+          <div class="sum-badge">{_badge_qual(q_mola)}</div>
+        </div>
+      </div>
+
+      <div class="sum-card">
+        <div class="sum-head">MANGA &amp; PNM</div>
+
+        <div class="sum-row">
+          <div>
+            <div class="sum-kpi">{perf_mp:.1f}%</div>
+            <div class="sum-sub">Performance do mês</div>
+            <div class="sum-sub">Produzido: {prod_mp} • Meta: {meta_mp_mes}</div>
+          </div>
+          <div class="sum-badge">{_badge_perf(perf_mp)}</div>
+        </div>
+
+        <div class="sum-row">
+          <div>
+            <div class="sum-kpi">{q_mp:.1f}%</div>
+            <div class="sum-sub">Qualidade do mês</div>
+            <div class="sum-sub">Inspec.: {insp_mp} • Reprov.: {rep_mp}</div>
+          </div>
+          <div class="sum-badge">{_badge_qual(q_mp)}</div>
+        </div>
+      </div>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
 
 # ==============================
 # ✅ Parser de data_hora robusto
