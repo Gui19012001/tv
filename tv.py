@@ -46,7 +46,6 @@ if not SUPABASE_URL or not SUPABASE_KEY:
     raise RuntimeError("SUPABASE_URL / SUPABASE_KEY não encontrados no teste.env")
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
-
 TZ = pytz.timezone("America/Sao_Paulo")
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
@@ -63,12 +62,22 @@ def aplicar_css_app():
     st.markdown(
         """
         <style>
-        .block-container {
+        /* =========================
+           ✅ TV FIX: usar tela toda
+           ========================= */
+        html, body, [data-testid="stAppViewContainer"]{
+            width: 100%;
+            max-width: 100%;
+        }
+        section.main > div{
+            max-width: 100% !important;
+        }
+        .block-container{
+            max-width: 100% !important;
+            padding-left: 0.35rem !important;
+            padding-right: 0.35rem !important;
             padding-top: 0.8rem;
             padding-bottom: 0.8rem;
-            padding-left: 1.2rem;
-            padding-right: 1.2rem;
-            max-width: 100%;
         }
 
         /* Não mata header (senão perde botão do sidebar) */
@@ -432,7 +441,7 @@ def pareto_top3(df_checks: pd.DataFrame) -> list[tuple[str, int]]:
     return [(str(idx), int(val)) for idx, val in top.items()]
 
 # ==============================
-# RESUMOS (iguais ao que você já usa)
+# RESUMOS
 # ==============================
 def resumo_total_apontamentos(data_inicio: datetime.date, data_fim: datetime.date) -> dict:
     hoje = datetime.datetime.now(TZ).date()
@@ -459,7 +468,6 @@ def resumo_total_apontamentos(data_inicio: datetime.date, data_fim: datetime.dat
     atraso = int(max(meta_acum - total, 0))
     aprov, insp, rep = calcular_aprovacao(df_checks, df_apont)
 
-    # oee
     performance_fraction = max(1 - (atraso / meta_acum), 0) if meta_acum > 0 else 1
     quality_fraction = (aprov / 100) if aprov > 0 else 0
     oee = float(performance_fraction * quality_fraction * 100)
@@ -500,7 +508,7 @@ def resumo_mola(data_inicio: datetime.date, data_fim: datetime.date) -> dict:
     }
 
     total = int(len(df_apont))
-    # meta acumulada "inicio_hora"
+
     meta_acum = 0
     hora_fechada = hora_atual.replace(minute=0, second=0, microsecond=0)
     for h, m in meta_hora.items():
@@ -583,7 +591,9 @@ def resumo_manga_pnm(data_inicio: datetime.date, data_fim: datetime.date) -> dic
 # ✅ PÁGINA 1 (INTACTA) - HTML DOS 3 CARDS
 # ==============================
 def render_onepage_html(resumos: list[dict]) -> tuple[str, int]:
-    HEIGHT = 430
+    # ✅ TV: iframe mais alto
+    HEIGHT = 560
+
     js_data = [{"key": r["key"], "oee": round(float(r["oee"]), 1)} for r in resumos]
 
     def pill_for(r: dict) -> tuple[str, str, str]:
@@ -640,26 +650,30 @@ def render_onepage_html(resumos: list[dict]) -> tuple[str, int]:
           </div>
         """)
 
+    # ✅ TV FIX PRINCIPAL:
+    # - grid sempre 3 colunas (remove @media que derrubava pra 2)
+    # - minmax maior pra não ficar “magro”
     html = f"""
-    <div style="width:100%;">
+    <div style="width:100%; max-width:100%;">
       <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
 
       <style>
         .grid-3 {{
           display: grid;
-          grid-template-columns: repeat(3, minmax(320px, 1fr));
-          gap: 26px;
+          grid-template-columns: repeat(3, minmax(520px, 1fr));
+          gap: 18px;
           align-items: stretch;
           width: 100%;
+          max-width: 100%;
         }}
 
         .card {{
           border-radius: 22px;
-          padding: 16px;
+          padding: 20px;
           background: linear-gradient(135deg, #071124 0%, #0B1B33 55%, #093A5A 100%);
           border: 1px solid rgba(255,255,255,0.10);
           box-shadow: 0 14px 26px rgba(0,0,0,0.18);
-          height: 345px;
+          height: 385px;
           overflow: hidden;
           color: white;
           font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial;
@@ -703,10 +717,10 @@ def render_onepage_html(resumos: list[dict]) -> tuple[str, int]:
 
         .mini {{
           border-radius:18px;
-          padding:12px 14px;
+          padding:14px 14px;
           background: rgba(255,255,255,0.06);
           border:1px solid rgba(255,255,255,0.10);
-          height: 108px;
+          height: 118px;
           overflow:hidden;
         }}
 
@@ -720,7 +734,7 @@ def render_onepage_html(resumos: list[dict]) -> tuple[str, int]:
         }}
 
         .mini-val {{
-          font-size:20px;
+          font-size:22px;
           font-weight:950;
           line-height:1.05;
         }}
@@ -728,7 +742,7 @@ def render_onepage_html(resumos: list[dict]) -> tuple[str, int]:
         .mini-foot {{
           font-size:11px;
           color:rgba(255,255,255,0.72);
-          margin-top:5px;
+          margin-top:6px;
           white-space:nowrap;
           overflow:hidden;
           text-overflow:ellipsis;
@@ -742,7 +756,7 @@ def render_onepage_html(resumos: list[dict]) -> tuple[str, int]:
         }}
 
         .gauge {{
-          height: 76px;
+          height: 88px;
           width: 100%;
           margin-top: 2px;
         }}
@@ -754,13 +768,6 @@ def render_onepage_html(resumos: list[dict]) -> tuple[str, int]:
           font-size:10px;
           color: rgba(255,255,255,0.72);
           padding: 0 2px;
-        }}
-
-        @media (max-width: 1280px) {{
-          .grid-3 {{ grid-template-columns: repeat(2, minmax(360px, 1fr)); }}
-        }}
-        @media (max-width: 860px) {{
-          .grid-3 {{ grid-template-columns: 1fr; }}
         }}
       </style>
 
@@ -796,7 +803,7 @@ def render_onepage_html(resumos: list[dict]) -> tuple[str, int]:
             margin: {{ l: 0, r: 0, t: 0, b: 0 }},
             paper_bgcolor: "rgba(0,0,0,0)",
             plot_bgcolor: "rgba(0,0,0,0)",
-            height: 76
+            height: 88
           }};
 
           Plotly.newPlot(id, data, layout, {{displayModeBar:false, responsive:true}});
@@ -858,7 +865,6 @@ def page_resumo_ia():
     hoje = now.date()
     ini_mes = hoje.replace(day=1)
 
-    # período do resumo (auto após 16h, ou manual)
     modo = st.sidebar.selectbox(
         "Resumo (Página 2)",
         ["Auto (>=16h = mês atual)", "Mês atual", "Usar filtro do One Page (Início/Fim)"],
@@ -872,7 +878,6 @@ def page_resumo_ia():
         data_ini = st.session_state.get("f_ini_val", hoje)
         data_fim = st.session_state.get("f_fim_val", hoje)
 
-    # bases do período
     a_total = filtrar_periodo(carregar_apontamentos(), data_ini, data_fim)
     c_total = filtrar_periodo(carregar_checklists(), data_ini, data_fim)
 
@@ -882,7 +887,6 @@ def page_resumo_ia():
     a_mp = filtrar_periodo(carregar_apontamentos_manga_pnm(), data_ini, data_fim)
     c_mp = filtrar_periodo(carregar_checklists_manga_pnm(), data_ini, data_fim)
 
-    # metas diárias -> mensal (dias úteis)
     meta_total_hora = {
         datetime.time(6,0):26, datetime.time(7,0):26, datetime.time(8,0):26,
         datetime.time(9,0):26, datetime.time(10,0):26, datetime.time(11,0):6,
@@ -922,7 +926,6 @@ def page_resumo_ia():
     top3_mola = pareto_top3(c_mola)
     top3_mp = pareto_top3(c_mp)
 
-    # UI “visionária”
     st.markdown(
         f"""
         <div class="v2-wrap">
@@ -937,7 +940,6 @@ def page_resumo_ia():
           <div class="v2-grid">
             <div class="v2-card">
               <h4>Linha de Montagem / Esteira (Total)</h4>
-
               <div class="v2-row">
                 <div>
                   <div class="v2-kpi">{perf_total:.1f}%</div>
@@ -945,7 +947,6 @@ def page_resumo_ia():
                 </div>
                 <div class="v2-chip">{_chip_perf(perf_total)}</div>
               </div>
-
               <div class="v2-row">
                 <div>
                   <div class="v2-kpi">{q_total:.1f}%</div>
@@ -953,13 +954,11 @@ def page_resumo_ia():
                 </div>
                 <div class="v2-chip">{_chip_qual(q_total)}</div>
               </div>
-
               <div class="v2-label">Produzido: <b>{prod_total}</b> • Meta: <b>{meta_total}</b></div>
             </div>
 
             <div class="v2-card">
               <h4>Montagem Mola</h4>
-
               <div class="v2-row">
                 <div>
                   <div class="v2-kpi">{perf_mola:.1f}%</div>
@@ -967,7 +966,6 @@ def page_resumo_ia():
                 </div>
                 <div class="v2-chip">{_chip_perf(perf_mola)}</div>
               </div>
-
               <div class="v2-row">
                 <div>
                   <div class="v2-kpi">{q_mola:.1f}%</div>
@@ -975,13 +973,11 @@ def page_resumo_ia():
                 </div>
                 <div class="v2-chip">{_chip_qual(q_mola)}</div>
               </div>
-
               <div class="v2-label">Produzido: <b>{prod_mola}</b> • Meta: <b>{meta_mola}</b></div>
             </div>
 
             <div class="v2-card">
               <h4>Montagem Manga & PNM</h4>
-
               <div class="v2-row">
                 <div>
                   <div class="v2-kpi">{perf_mp:.1f}%</div>
@@ -989,7 +985,6 @@ def page_resumo_ia():
                 </div>
                 <div class="v2-chip">{_chip_perf(perf_mp)}</div>
               </div>
-
               <div class="v2-row">
                 <div>
                   <div class="v2-kpi">{q_mp:.1f}%</div>
@@ -997,7 +992,6 @@ def page_resumo_ia():
                 </div>
                 <div class="v2-chip">{_chip_qual(q_mp)}</div>
               </div>
-
               <div class="v2-label">Produzido: <b>{prod_mp}</b> • Meta: <b>{meta_mp}</b></div>
             </div>
           </div>
@@ -1023,7 +1017,6 @@ def page_resumo_ia():
         unsafe_allow_html=True
     )
 
-    # Botão de IA + saída (fora do HTML pra funcionar sem gambiarra)
     st.write("")
     cols = st.columns([1, 2])
     with cols[0]:
@@ -1086,7 +1079,6 @@ def main():
     now = datetime.datetime.now(TZ)
     hoje = now.date()
 
-    # Sidebar sempre disponível
     st.sidebar.markdown("## Menu")
     pagina = st.sidebar.radio("Página", ["One Page (TV)", "Resumo Mensal + IA"], index=0)
 
@@ -1095,7 +1087,6 @@ def main():
     data_inicio = st.sidebar.date_input("Início", hoje, key="f_ini")
     data_fim = st.sidebar.date_input("Fim", hoje, key="f_fim")
 
-    # guarda pra página 2 poder usar se quiser
     st.session_state["f_ini_val"] = data_inicio
     st.session_state["f_fim_val"] = data_fim
 
@@ -1109,15 +1100,12 @@ def main():
             f"<div class='op-sub'>Período: <b>{data_inicio}</b> até <b>{data_fim}</b></div>",
             unsafe_allow_html=True
         )
-        # ✅ página 1 intacta
         page_onepage(data_inicio, data_fim)
-
     else:
         st.markdown(
             f"<div class='op-sub'>Modo: <b>Resumo Mensal + IA</b></div>",
             unsafe_allow_html=True
         )
-        # ✅ página 2 visionária
         page_resumo_ia()
 
     st.markdown(
