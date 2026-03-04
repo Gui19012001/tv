@@ -61,98 +61,133 @@ if OPENAI_AVAILABLE and OPENAI_API_KEY:
 # + mantém botão do sidebar acessível
 # + reduz “piscada” (sem esconder header totalmente)
 # ==============================
-def _badge_perf(pct: float) -> str:
-    if pct >= 100:
-        return "ACIMA DA META"
-    if pct >= 95:
-        return "MUITO PRÓXIMO"
-    if pct >= 85:
-        return "ABAIXO"
-    return "CRÍTICO"
+def aplicar_css_app():
+    st.markdown(
+        """
+        <style>
+        .block-container {
+            padding-top: 0.8rem;
+            padding-bottom: 0.8rem;
+            padding-left: 1.2rem;
+            padding-right: 1.2rem;
+            max-width: 100%;
+        }
 
-def _badge_qual(pct: float) -> str:
-    if pct >= 98:
-        return "EXCELENTE"
-    if pct >= 95:
-        return "OK"
-    if pct >= 90:
-        return "ATENÇÃO"
-    return "CRÍTICO"
+        /* Mantém o header vivo (senão some o botão do sidebar) */
+        header[data-testid="stHeader"] {
+            background: transparent;
+            border: none;
+        }
+        div[data-testid="stToolbar"] {visibility:hidden;height:0;position:fixed;}
 
-# ... dentro de page_resumo_ia(), depois de calcular perf_total/perf_mola/perf_mp e q_total/q_mola/q_mp ...
+        /* Botão do sidebar sempre acessível */
+        button[data-testid="stSidebarCollapseButton"]{
+            position: fixed !important;
+            top: 12px !important;
+            left: 10px !important;
+            z-index: 999999 !important;
+            opacity: 0.45;
+            transform: scale(1.05);
+        }
+        button[data-testid="stSidebarCollapseButton"]:hover{opacity: 1;}
 
-st.markdown(
-    f"""
-    <div class="sum-grid">
-      <div class="sum-card">
-        <div class="sum-head">TOTAL (Apontamentos)</div>
+        /* Reduz widgets/efeitos visuais */
+        div[data-testid="stStatusWidget"] {display:none !important;}
+        div[data-testid="stDecoration"] {display:none !important;}
 
-        <div class="sum-row">
-          <div>
-            <div class="sum-kpi">{perf_total:.1f}%</div>
-            <div class="sum-sub">Performance do mês</div>
-            <div class="sum-sub">Produzido: {prod_total} • Meta: {meta_total_mes}</div>
-          </div>
-          <div class="sum-badge">{_badge_perf(perf_total)}</div>
-        </div>
+        /* Fundo branco clean */
+        .stApp { background: #F6F7FB; }
 
-        <div class="sum-row">
-          <div>
-            <div class="sum-kpi">{q_total:.1f}%</div>
-            <div class="sum-sub">Qualidade do mês</div>
-            <div class="sum-sub">Inspec.: {insp_total} • Reprov.: {rep_total}</div>
-          </div>
-          <div class="sum-badge">{_badge_qual(q_total)}</div>
-        </div>
-      </div>
+        /* ✅ FORÇA CONTRASTE GERAL (corrige texto “apagado”) */
+        html, body, [class*="st-"] { color: #0B1B33 !important; }
+        .stMarkdown, .stText, .stCaption { color: #0B1B33 !important; }
+        .stCaption { opacity: 0.85 !important; }
 
-      <div class="sum-card">
-        <div class="sum-head">MOLA</div>
+        /* ✅ st.metric mais escuro */
+        [data-testid="stMetricLabel"] { color: rgba(11,27,51,0.75) !important; }
+        [data-testid="stMetricValue"] { color: #0B1B33 !important; font-weight: 900 !important; }
+        [data-testid="stMetricDelta"] { color: rgba(11,27,51,0.70) !important; }
 
-        <div class="sum-row">
-          <div>
-            <div class="sum-kpi">{perf_mola:.1f}%</div>
-            <div class="sum-sub">Performance do mês</div>
-            <div class="sum-sub">Produzido: {prod_mola} • Meta: {meta_mola_mes}</div>
-          </div>
-          <div class="sum-badge">{_badge_perf(perf_mola)}</div>
-        </div>
+        /* Sidebar clean */
+        section[data-testid="stSidebar"] {
+            background: #FFFFFF;
+            border-right: 1px solid rgba(11,27,51,0.10);
+        }
 
-        <div class="sum-row">
-          <div>
-            <div class="sum-kpi">{q_mola:.1f}%</div>
-            <div class="sum-sub">Qualidade do mês</div>
-            <div class="sum-sub">Inspec.: {insp_mola} • Reprov.: {rep_mola}</div>
-          </div>
-          <div class="sum-badge">{_badge_qual(q_mola)}</div>
-        </div>
-      </div>
+        .op-title {
+            font-size: 22px;
+            font-weight: 900;
+            color: #0B1B33;
+            letter-spacing: 0.4px;
+            margin: 2px 0 4px 0;
+        }
 
-      <div class="sum-card">
-        <div class="sum-head">MANGA &amp; PNM</div>
+        .op-sub {
+            color: rgba(11,27,51,0.70);
+            margin-bottom: 10px;
+        }
 
-        <div class="sum-row">
-          <div>
-            <div class="sum-kpi">{perf_mp:.1f}%</div>
-            <div class="sum-sub">Performance do mês</div>
-            <div class="sum-sub">Produzido: {prod_mp} • Meta: {meta_mp_mes}</div>
-          </div>
-          <div class="sum-badge">{_badge_perf(perf_mp)}</div>
-        </div>
-
-        <div class="sum-row">
-          <div>
-            <div class="sum-kpi">{q_mp:.1f}%</div>
-            <div class="sum-sub">Qualidade do mês</div>
-            <div class="sum-sub">Inspec.: {insp_mp} • Reprov.: {rep_mp}</div>
-          </div>
-          <div class="sum-badge">{_badge_qual(q_mp)}</div>
-        </div>
-      </div>
-    </div>
-    """,
-    unsafe_allow_html=True
-)
+        /* ✅ Cards do Resumo Mensal */
+        .sum-grid{
+            display:grid;
+            grid-template-columns: repeat(3, minmax(280px, 1fr));
+            gap:16px;
+            width:100%;
+            margin-top: 6px;
+        }
+        .sum-card{
+            background: #FFFFFF;
+            border: 1px solid rgba(11,27,51,0.10);
+            border-radius: 18px;
+            padding: 14px 16px;
+            box-shadow: 0 10px 18px rgba(0,0,0,0.06);
+        }
+        .sum-head{
+            font-size: 12px;
+            font-weight: 950;
+            letter-spacing: .25px;
+            color: rgba(11,27,51,0.72);
+            text-transform: uppercase;
+            margin-bottom: 8px;
+        }
+        .sum-row{
+            display:flex;
+            justify-content:space-between;
+            align-items:flex-end;
+            gap:12px;
+            margin: 10px 0;
+        }
+        .sum-kpi{
+            font-size: 26px;
+            font-weight: 950;
+            color: #0B1B33;
+            line-height: 1;
+        }
+        .sum-sub{
+            font-size: 12px;
+            color: rgba(11,27,51,0.75);
+            margin-top: 2px;
+        }
+        .sum-badge{
+            font-size: 11px;
+            font-weight: 900;
+            padding: 6px 10px;
+            border-radius: 999px;
+            border: 1px solid rgba(11,27,51,0.18);
+            background: rgba(11,27,51,0.04);
+            color: rgba(11,27,51,0.85);
+            white-space: nowrap;
+        }
+        @media (max-width: 1100px){
+            .sum-grid{ grid-template-columns: repeat(2, minmax(280px, 1fr)); }
+        }
+        @media (max-width: 780px){
+            .sum-grid{ grid-template-columns: 1fr; }
+        }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
 
 # ==============================
 # ✅ Parser de data_hora robusto
