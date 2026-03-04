@@ -237,7 +237,7 @@ def aplicar_css_app():
         }
 
         @media (max-width: 1100px){
-            .v2-grid{ grid-template-columns: repeat(2, minmax(260px, 1fr)); }
+            .v2-grid{ grid-template-columns: repeat(2, minmax(220px, 1fr)); }
             .v2-line{ grid-template-columns: 1fr; }
         }
         @media (max-width: 780px){
