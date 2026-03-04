@@ -67,12 +67,9 @@ def aplicar_css_app():
         div[data-testid="stStatusWidget"] {display:none !important;}
         div[data-testid="stDecoration"] {display:none !important;}
         div[data-testid="stSpinner"] {display:none !important;}
-        section[data-testid="stSidebar"] {background: #FFFFFF;}
 
         /* Fundo branco clean */
-        .stApp {
-            background: #F6F7FB;
-        }
+        .stApp { background: #F6F7FB; }
 
         .op-title {
             font-size: 22px;
@@ -91,6 +88,81 @@ def aplicar_css_app():
         button[kind="header"] {opacity: 0.25;}
         button[kind="header"]:hover {opacity: 1;}
 
+        /* ====== Resumo + IA (futurista minimalista) ====== */
+        .rx-wrap {
+            background: linear-gradient(135deg, #071124 0%, #0B1B33 55%, #093A5A 100%);
+            border: 1px solid rgba(255,255,255,0.10);
+            box-shadow: 0 14px 26px rgba(0,0,0,0.10);
+            border-radius: 18px;
+            padding: 14px 16px;
+            color: #F3F7FF;
+        }
+        .rx-h {
+            font-weight: 950;
+            letter-spacing: .2px;
+            text-transform: uppercase;
+            font-size: 12px;
+            color: rgba(243,247,255,0.88);
+            margin-bottom: 10px;
+        }
+        .rx-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(220px, 1fr));
+            gap: 10px;
+        }
+        .rx-kpi {
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.10);
+            border-radius: 14px;
+            padding: 10px 12px;
+            min-height: 74px;
+        }
+        .rx-kpi .k {
+            font-size: 10px;
+            font-weight: 900;
+            text-transform: uppercase;
+            color: rgba(243,247,255,0.75);
+            margin-bottom: 6px;
+        }
+        .rx-kpi .v {
+            font-size: 18px;
+            font-weight: 950;
+            color: rgba(243,247,255,0.95);
+            line-height: 1.0;
+        }
+        .rx-kpi .s {
+            font-size: 10px;
+            color: rgba(243,247,255,0.70);
+            margin-top: 6px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .rx-line {
+            margin-top: 10px;
+            display: grid;
+            grid-template-columns: 1.1fr .9fr;
+            gap: 10px;
+        }
+        .rx-box {
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.10);
+            border-radius: 14px;
+            padding: 12px;
+        }
+        .rx-box h4 {
+            margin: 0 0 8px 0;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: .2px;
+            color: rgba(243,247,255,0.85);
+        }
+        .rx-ul { margin: 0; padding-left: 16px; color: rgba(243,247,255,0.88); }
+        .rx-ul li { margin: 6px 0; font-size: 12px; }
+        @media (max-width: 1200px) {
+            .rx-grid { grid-template-columns: 1fr; }
+            .rx-line { grid-template-columns: 1fr; }
+        }
         </style>
         """,
         unsafe_allow_html=True
@@ -234,7 +306,6 @@ def calcular_aprovacao(df_checks: pd.DataFrame, df_apont: pd.DataFrame) -> tuple
     - Para cada número de série, usa o último registro (por data_hora se existir),
       senão usa o último por ordem de carregamento.
     - Reprovado se status == "não conforme" OU produto_reprovado == "Sim" (ou equivalentes).
-    - Se reinspecao == "Sim" e houver reprovação no último registro, continua reprovado.
     """
     if df_checks is None or df_checks.empty or df_apont is None or df_apont.empty:
         return 0.0, 0, 0
@@ -258,17 +329,9 @@ def calcular_aprovacao(df_checks: pd.DataFrame, df_apont: pd.DataFrame) -> tuple
     if total_inspecionado == 0:
         return 0.0, 0, 0
 
-    # reinspecao (se existir)
-    reinspecao_sim = None
-    if "reinspecao" in ult.columns:
-        reinspecao_sim = ult["reinspecao"].astype(str).map(_is_sim)
-
     reprovados = 0
-    for i, row in ult.iterrows():
-        rep = _is_reprovado_row(row)
-        # Se reinspecao existir e for "Sim", mantemos o resultado do último registro
-        # (se o último ainda está reprovado, conta como reprovado).
-        if rep:
+    for _, row in ult.iterrows():
+        if _is_reprovado_row(row):
             reprovados += 1
 
     aprovados = total_inspecionado - reprovados
@@ -305,7 +368,6 @@ def resumo_esteira(data_inicio: datetime.date, data_fim: datetime.date) -> dict:
     aprov, insp, rep = calcular_aprovacao(df_checks, df_apont)
     oee = calcular_oee(atraso, meta_acum, aprov)
 
-    # rodapé com split por tipo_producao (se existir)
     rodape = ""
     if not df_apont.empty and "tipo_producao" in df_apont.columns:
         tp = df_apont["tipo_producao"].astype(str)
@@ -345,8 +407,7 @@ def resumo_mola(data_inicio: datetime.date, data_fim: datetime.date) -> dict:
     meta_acum = calcular_meta_acumulada_por_hora(meta_hora, hoje, hora_atual, modo="inicio_hora")
     atraso = int(max(meta_acum - total, 0))
 
-    # ✅ Aprovação robusta (corrige 100% indevido quando há reprovados)
-    aprov, insp, rep = calcular_aprovacao(df_checks, df_apont)
+    aprov, insp, rep = calcular_aprovacao(df_checks, df_apont)  # ✅ robusto
     oee = calcular_oee(atraso, meta_acum, aprov)
 
     rodape = f"Reprovados: {rep}" if insp > 0 else ""
@@ -408,6 +469,7 @@ def resumo_manga_pnm(data_inicio: datetime.date, data_fim: datetime.date) -> dic
 # ==============================
 # ONEPAGE (1 iframe, 3 cards alinhados)
 # + eixo 0% e 100% visíveis
+# (NÃO MEXER NA ESTRUTURA DA 1ª PÁGINA)
 # ==============================
 def render_onepage_html(resumos: list[dict]) -> str:
     HEIGHT = 430
@@ -637,59 +699,295 @@ def render_onepage_html(resumos: list[dict]) -> str:
     return html, HEIGHT
 
 # ==============================
+# Pareto TOP 3 (falhas) - robusto
+# ==============================
+def _find_falha_col(df: pd.DataFrame) -> str | None:
+    candidatos = [
+        "falha", "defeito", "motivo", "nao_conformidade", "não_conformidade",
+        "descricao_falha", "descrição_falha", "tipo_falha", "ocorrencia",
+        "item", "ponto", "anomalia", "causa", "problema"
+    ]
+    cols = {c.lower(): c for c in df.columns}
+    for c in candidatos:
+        if c.lower() in cols:
+            return cols[c.lower()]
+    return None
+
+def pareto_top3_falhas(df_checks_periodo: pd.DataFrame) -> list[tuple[str, int]]:
+    """
+    Conta TOP 3 falhas somente em linhas reprovadas (por linha, não por série).
+    Se não existir coluna de falha, retorna vazio.
+    """
+    if df_checks_periodo is None or df_checks_periodo.empty:
+        return []
+
+    falha_col = _find_falha_col(df_checks_periodo)
+    if not falha_col:
+        return []
+
+    d = df_checks_periodo.copy()
+    # marca reprovados por linha
+    d["__reprov"] = d.apply(_is_reprovado_row, axis=1)
+    d = d[d["__reprov"] == True].copy()
+    if d.empty:
+        return []
+
+    d[falha_col] = d[falha_col].astype(str).str.strip()
+    d = d[d[falha_col] != ""]
+    if d.empty:
+        return []
+
+    top = d[falha_col].value_counts().head(3)
+    return [(idx, int(val)) for idx, val in top.items()]
+
+# ==============================
+# IA (OpenAI) - funciona por ENV ou por campo no sidebar
+# ==============================
+def call_openai_insights(api_key: str, modelo: str, payload_texto: str) -> str:
+    """
+    Tenta usar SDK novo (openai). Se não tiver, cai fora com erro claro.
+    """
+    try:
+        from openai import OpenAI
+    except Exception as e:
+        raise RuntimeError("Biblioteca 'openai' não instalada no ambiente. Adicione em requirements.txt: openai") from e
+
+    client = OpenAI(api_key=api_key)
+
+    prompt = f"""
+Você é um analista Lean/Produção e Qualidade.
+Gere um resumo minimalista e acionável (máx 10 linhas), em português do Brasil.
+- Performance = atraso/meta + OEE
+- Qualidade = aprovação + reprovados
+- Cite os TOP 3 do pareto como foco de ataque
+- Sugira ações práticas (check rápido) sem inventar fatos.
+
+DADOS:
+{payload_texto}
+""".strip()
+
+    resp = client.responses.create(
+        model=modelo,
+        input=prompt,
+    )
+    try:
+        return resp.output_text.strip()
+    except Exception:
+        return str(resp).strip()
+
+# ==============================
+# Página 2: Resumo minimalista + IA
+# ==============================
+def render_resumo_com_ia(
+    data_inicio: datetime.date,
+    data_fim: datetime.date,
+    api_key_ia: str,
+    modelo_ia: str
+):
+    # Resumos (mesmo cálculo dos cards)
+    r1 = resumo_esteira(data_inicio, data_fim)
+    r2 = resumo_mola(data_inicio, data_fim)
+    r3 = resumo_manga_pnm(data_inicio, data_fim)
+
+    # Pareto na ESTEIRA (checklists geral) no período
+    df_checks = filtrar_periodo(carregar_checklists(), data_inicio, data_fim)
+    top3 = pareto_top3_falhas(df_checks)
+
+    top3_txt = " | ".join([f"{n} ({q})" for n, q in top3]) if top3 else "Sem coluna de falha / sem reprovações"
+
+    # bloco futurista minimalista (não mexe nos cards)
+    html = f"""
+    <div class="rx-wrap">
+        <div class="rx-h">Resumo do período • Minimalista</div>
+
+        <div class="rx-grid">
+            <div class="rx-kpi">
+                <div class="k">Performance (Total)</div>
+                <div class="v">OEE {r1['oee']:.1f}% • Atraso {r1['atraso']}</div>
+                <div class="s">Produzido: {r1['total']} • Meta acumulada: (via horário)</div>
+            </div>
+            <div class="rx-kpi">
+                <div class="k">Qualidade (Total)</div>
+                <div class="v">{r1['aprovacao']:.1f}% • Reprov. {int(r1['reprovados'])}</div>
+                <div class="s">Inspec.: {int(r1['inspecionado'])}</div>
+            </div>
+            <div class="rx-kpi">
+                <div class="k">Pareto Top 3 (Esteira)</div>
+                <div class="v" style="font-size:13px; line-height:1.2;">{top3_txt}</div>
+                <div class="s">Foco de ataque do dia/mês</div>
+            </div>
+        </div>
+
+        <div class="rx-line">
+            <div class="rx-box">
+                <h4>Linhas (visão rápida)</h4>
+                <ul class="rx-ul">
+                    <li><b>{r2['nome']}</b> — OEE {r2['oee']:.1f}% • Atraso {r2['atraso']} • Qualidade {r2['aprovacao']:.1f}% • Reprov. {int(r2['reprovados'])}</li>
+                    <li><b>{r3['nome']}</b> — OEE {r3['oee']:.1f}% • Atraso {r3['atraso']} • Qualidade {r3['aprovacao']:.1f}% • Reprov. {int(r3['reprovados'])}</li>
+                </ul>
+            </div>
+
+            <div class="rx-box">
+                <h4>Insights</h4>
+                <div style="font-size:12px; color:rgba(243,247,255,0.88);">
+                    Clique em <b>Gerar Insights IA</b> para recomendações.
+                </div>
+            </div>
+        </div>
+    </div>
+    """
+    st.markdown(html, unsafe_allow_html=True)
+
+    # Payload para IA
+    payload = {
+        "periodo": f"{data_inicio} até {data_fim}",
+        "total": r1,
+        "mola": r2,
+        "manga_pnm": r3,
+        "pareto_top3": top3
+    }
+    payload_texto = str(payload)
+
+    # Botão IA
+    col1, col2 = st.columns([1, 2])
+    with col1:
+        gerar = st.button("Gerar Insights IA", use_container_width=True)
+    with col2:
+        st.caption("Se não sair nada, falta configurar a API Key (sidebar).")
+
+    if "ia_texto" not in st.session_state:
+        st.session_state["ia_texto"] = ""
+
+    if gerar:
+        if not api_key_ia:
+            st.warning("Falta a OpenAI API Key. Cole na sidebar (campo 'OpenAI API Key') ou configure no env.")
+        else:
+            try:
+                with st.spinner("Gerando insights..."):
+                    texto = call_openai_insights(api_key_ia, modelo_ia, payload_texto)
+                st.session_state["ia_texto"] = texto
+            except Exception as e:
+                st.error(str(e))
+
+    if st.session_state.get("ia_texto"):
+        st.text_area("Insights IA (salvo até você gerar de novo)", value=st.session_state["ia_texto"], height=220)
+
+# ==============================
 # Main
-# - Sidebar com filtro de data (oculta/recolhida, mas disponível)
-# - Congela visual enquanto recalcula (mostra último HTML imediatamente)
+# - Sidebar com pagina + modo resumo
+# - Dashboard preservado (cards)
 # ==============================
 def main():
     aplicar_css_app()
 
-    # ✅ Autorefresh com key única (evita DuplicateElementKey)
+    # ✅ Autorefresh com key fixa (evita DuplicateElementKey)
     if AUTORELOAD_AVAILABLE:
         st_autorefresh(interval=60000, key="autorefresh_onepage_linhas")
 
-    hoje = datetime.datetime.now(TZ).date()
+    now = datetime.datetime.now(TZ)
+    hoje = now.date()
 
-    # Sidebar (recolhida por padrão, mas existe)
-    st.sidebar.markdown("### Filtro (Data)")
+    # ==========================
+    # Sidebar: navegação
+    # ==========================
+    st.sidebar.markdown("## Menu")
+    pagina = st.sidebar.radio("Página", ["Dashboard", "Resumo + IA"], index=0)
+
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("## Filtro (Data)")
     data_inicio = st.sidebar.date_input("Início", hoje, key="f_ini")
     data_fim = st.sidebar.date_input("Fim", hoje, key="f_fim")
 
-    # Botão opcional de atualizar manualmente (sem “piscada” a cada clique no navegador)
     if st.sidebar.button("Atualizar agora"):
         st.cache_data.clear()
 
+    # ==========================
+    # Sidebar: Resumo + IA
+    # ==========================
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("## IA (opcional)")
+    # permite colar sem saber env
+    if "openai_key_ui" not in st.session_state:
+        st.session_state["openai_key_ui"] = ""
+
+    openai_key_ui = st.sidebar.text_input(
+        "OpenAI API Key",
+        value=st.session_state["openai_key_ui"],
+        type="password",
+        help="Cole aqui para habilitar IA (não aparece na tela). Depois te mostro como pôr no env."
+    )
+    st.session_state["openai_key_ui"] = openai_key_ui
+
+    modelo_ia = st.sidebar.text_input("Modelo", value=os.getenv("OPENAI_MODEL", "gpt-4o-mini"))
+
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("## Resumo (Auto 16h)")
+    modo_resumo = st.sidebar.selectbox(
+        "Modo do resumo",
+        ["Auto (>=16h = mês)", "Dia (manual)", "Mês atual"],
+        index=0
+    )
+
+    # ==========================
+    # Topo
+    # ==========================
     st.markdown("<div class='op-title'>ONE PAGE GERENCIAL — LINHAS</div>", unsafe_allow_html=True)
     st.markdown(
         f"<div class='op-sub'>Período: <b>{data_inicio}</b> até <b>{data_fim}</b></div>",
         unsafe_allow_html=True
     )
 
-    # ✅ Placeholder: renderiza o último HTML primeiro (evita ficar branco durante atualização)
-    ph = st.empty()
+    # ==========================
+    # DASHBOARD (1ª página) - PRESERVADO
+    # ==========================
+    if pagina == "Dashboard":
+        # ✅ Placeholder: renderiza último HTML primeiro (evita ficar branco durante atualização)
+        ph = st.empty()
 
-    if "last_html" in st.session_state and "last_height" in st.session_state:
+        if "last_html" in st.session_state and "last_height" in st.session_state:
+            with ph.container():
+                components.html(st.session_state["last_html"], height=st.session_state["last_height"], scrolling=False)
+
+        resumos = [
+            resumo_esteira(data_inicio, data_fim),
+            resumo_mola(data_inicio, data_fim),
+            resumo_manga_pnm(data_inicio, data_fim),
+        ]
+
+        html, height = render_onepage_html(resumos)
+
         with ph.container():
-            components.html(st.session_state["last_html"], height=st.session_state["last_height"], scrolling=False)
+            components.html(html, height=height, scrolling=False)
 
-    # ✅ Calcula dados (cache ajuda a ser rápido)
-    resumos = [
-        resumo_esteira(data_inicio, data_fim),
-        resumo_mola(data_inicio, data_fim),
-        resumo_manga_pnm(data_inicio, data_fim),
-    ]
+        st.session_state["last_html"] = html
+        st.session_state["last_height"] = height
 
-    html, height = render_onepage_html(resumos)
+    # ==========================
+    # RESUMO + IA (2ª página) - NOVO
+    # ==========================
+    else:
+        # define período do resumo
+        if modo_resumo == "Mês atual" or (modo_resumo.startswith("Auto") and now.hour >= 16):
+            ini = now.replace(day=1).date()
+            fim = now.date()
+        else:
+            ini = data_inicio
+            fim = data_fim
 
-    # Atualiza o placeholder com o HTML novo
-    with ph.container():
-        components.html(html, height=height, scrolling=False)
+        # pega key da UI ou do env
+        api_key_ia = (openai_key_ui or os.getenv("OPENAI_API_KEY", "")).strip()
 
-    # Guarda para “congelar” no próximo refresh
-    st.session_state["last_html"] = html
-    st.session_state["last_height"] = height
+        render_resumo_com_ia(
+            data_inicio=ini,
+            data_fim=fim,
+            api_key_ia=api_key_ia,
+            modelo_ia=modelo_ia.strip() or "gpt-4o-mini"
+        )
 
-    hora = datetime.datetime.now(TZ).strftime("%H:%M:%S")
+    # ==========================
+    # Rodapé
+    # ==========================
+    hora = now.strftime("%H:%M:%S")
     st.markdown(
         f"<p style='color:rgba(11,27,51,0.55);text-align:center;margin-top:10px;'>Atualizado às <b>{hora}</b></p>",
         unsafe_allow_html=True
