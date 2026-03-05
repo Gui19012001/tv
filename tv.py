@@ -85,18 +85,44 @@ def aplicar_css_app():
             background: transparent;
             border: none;
         }
-        div[data-testid="stToolbar"] {visibility:hidden;height:0;position:fixed;}
 
-        /* Botão do sidebar sempre visível */
-        button[data-testid="stSidebarCollapseButton"]{
+        /* ✅ CORREÇÃO: NÃO zerar o toolbar (isso some o botão do sidebar em alguns browsers) */
+        div[data-testid="stToolbar"]{
+            visibility: visible !important;
+            height: auto !important;
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            z-index: 999999 !important;
+            background: transparent !important;
+        }
+        /* esconde os ícones do toolbar, mas mantém o container vivo */
+        div[data-testid="stToolbar"] *{
+            opacity: 0 !important;
+            pointer-events: none !important;
+        }
+
+        /* ✅ Botão do sidebar sempre visível e clicável */
+        button[data-testid="stSidebarCollapseButton"],
+        button[aria-label*="sidebar"],
+        button[title*="sidebar"]{
             position: fixed !important;
             top: 10px !important;
             left: 10px !important;
-            z-index: 999999 !important;
-            opacity: 0.45;
-            transform: scale(1.05);
+
+            z-index: 2147483647 !important;
+
+            opacity: 1 !important;
+            pointer-events: auto !important;
+            display: flex !important;
+            visibility: visible !important;
+
+            transform: scale(1.15) !important;
+            background: rgba(11,27,51,0.10) !important;
+            border: 1px solid rgba(11,27,51,0.18) !important;
+            border-radius: 10px !important;
         }
-        button[data-testid="stSidebarCollapseButton"]:hover{opacity: 1;}
+        button[data-testid="stSidebarCollapseButton"]:hover{opacity: 1 !important;}
 
         /* Reduz “piscadas” */
         div[data-testid="stStatusWidget"] {display:none !important;}
