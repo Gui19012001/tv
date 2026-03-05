@@ -80,49 +80,61 @@ def aplicar_css_app():
             padding-bottom: 0.8rem;
         }
 
-        /* Não mata header (senão perde botão do sidebar) */
-        header[data-testid="stHeader"] {
-            background: transparent;
-            border: none;
-        }
-
-        /* ✅ CORREÇÃO: NÃO zerar o toolbar (isso some o botão do sidebar em alguns browsers) */
+        /* ✅ NÃO esconder o toolbar inteiro (isso faz o botão do sidebar sumir depois do carregamento) */
         div[data-testid="stToolbar"]{
             visibility: visible !important;
             height: auto !important;
             position: fixed !important;
             top: 0 !important;
-            left: 0 !important;
-            z-index: 999999 !important;
+            right: 0 !important;
+            z-index: 999990 !important;
             background: transparent !important;
         }
-        /* esconde os ícones do toolbar, mas mantém o container vivo */
-        div[data-testid="stToolbar"] *{
+
+        /* ✅ Se existir área de ações do toolbar, esconda SÓ ela (não mexe no botão do sidebar) */
+        div[data-testid="stToolbar"] [data-testid="stToolbarActions"],
+        div[data-testid="stToolbar"] [data-testid="stToolbarActionItems"]{
             opacity: 0 !important;
             pointer-events: none !important;
         }
 
-        /* ✅ Botão do sidebar sempre visível e clicável */
+        /* Header não pode ser removido (senão perde controles) */
+        header[data-testid="stHeader"]{
+            background: transparent !important;
+            border: none !important;
+            visibility: visible !important;
+            height: auto !important;
+            z-index: 999980 !important;
+        }
+
+        /* ✅ Botão do sidebar: força aparecer e ficar clicável (vários ids/labels, pois muda por versão) */
         button[data-testid="stSidebarCollapseButton"],
-        button[aria-label*="sidebar"],
-        button[title*="sidebar"]{
+        button[data-testid="baseButton-headerNoPadding"],
+        button[aria-label="Open sidebar"],
+        button[aria-label="Close sidebar"],
+        button[title="Open sidebar"],
+        button[title="Close sidebar"]{
             position: fixed !important;
             top: 10px !important;
             left: 10px !important;
-
             z-index: 2147483647 !important;
-
             opacity: 1 !important;
-            pointer-events: auto !important;
             display: flex !important;
             visibility: visible !important;
-
+            pointer-events: auto !important;
             transform: scale(1.15) !important;
+
             background: rgba(11,27,51,0.10) !important;
             border: 1px solid rgba(11,27,51,0.18) !important;
             border-radius: 10px !important;
+            box-shadow: 0 6px 18px rgba(0,0,0,0.10) !important;
+            backdrop-filter: blur(6px) !important;
         }
-        button[data-testid="stSidebarCollapseButton"]:hover{opacity: 1 !important;}
+
+        /* ✅ garante que qualquer overlay não “roube” o clique do botão */
+        header[data-testid="stHeader"] *{
+            pointer-events: auto;
+        }
 
         /* Reduz “piscadas” */
         div[data-testid="stStatusWidget"] {display:none !important;}
