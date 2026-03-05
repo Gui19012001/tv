@@ -328,68 +328,137 @@ def carregar_checklists_manga_pnm():
 # ==============================
 # Helpers
 # ==============================
+
+# ✅ CORRIGIDO: filtra por data_hora OU created_at/timestamp quando não existir data_hora
 def filtrar_periodo(df: pd.DataFrame, data_inicio: datetime.date, data_fim: datetime.date) -> pd.DataFrame:
-    if df is None or df.empty or "data_hora" not in df.columns:
+    if df is None or df.empty:
         return pd.DataFrame()
-    dff = df.copy()
-    dff = dff[dff["data_hora"].notna()]
-    return dff[(dff["data_hora"].dt.date >= data_inicio) & (dff["data_hora"].dt.date <= data_fim)]
+
+    # tenta colunas comuns de data (checklists às vezes não tem data_hora)
+    for col in ("data_hora", "created_at", "createdAt", "timestamp", "data", "dt"):
+        if col in df.columns:
+            dff = df.copy()
+            dff[col] = pd.to_datetime(dff[col], errors="coerce")
+
+            # timezone-aware -> converte; naive -> localiza no TZ local
+            if getattr(dff[col].dt, "tz", None) is not None:
+                dff[col] = dff[col].dt.tz_convert(TZ)
+            else:
+                dff[col] = dff[col].dt.tz_localize(TZ)
+
+            dff = dff[dff[col].notna()]
+            return dff[(dff[col].dt.date >= data_inicio) & (dff[col].dt.date <= data_fim)]
+
+    # sem coluna de data: devolve tudo (melhor do que zerar)
+    return df.copy()
 
 def _norm(x) -> str:
     return str(x).strip().lower()
 
 def _is_sim(x) -> bool:
     v = _norm(x)
-    return v in ("sim", "s", "1", "true", "verdadeiro", "yes", "y")
+    return v in ("sim", "s", "1", "true", "verdadeiro", "yes", "y", "ok")
 
 def _is_nao(x) -> bool:
     v = _norm(x)
-    return v in ("não", "nao", "n", "0", "false", "falso", "no")
+    return v in ("não", "nao", "n", "0", "false", "falso", "no", "nok")
 
+# ✅ CORRIGIDO: detecta reprovação em mais colunas comuns
 def _is_reprovado_row(row: pd.Series) -> bool:
-    if "status" in row.index and _norm(row.get("status")) in ("não conforme", "nao conforme", "reprovado"):
-        return True
+    # 1) status explícito
+    if "status" in row.index:
+        stt = _norm(row.get("status"))
+        if stt in ("não conforme", "nao conforme", "reprovado", "nc", "nok", "falha", "fail"):
+            return True
+
+    # 2) produto_reprovado: "Sim" = reprovado / "Não" = ok
     if "produto_reprovado" in row.index:
         pr = row.get("produto_reprovado")
-        if _is_sim(pr):
+        if _is_sim(pr):   # aqui "sim" significa "reprovado"
             return True
         if _is_nao(pr):
             return False
-    for col in ("reprovado", "aprovado"):
+
+    # 3) chaves comuns de resultado/conformidade/aprovação
+    for col in (
+        "resultado", "resultado_final", "conformidade", "conforme",
+        "aprovado", "aprovacao", "aprovacao_final", "reprovado",
+        "nao_conforme", "não_conforme", "nc", "ok_nok", "oknok", "resultado_ok"
+    ):
         if col in row.index:
-            v = row.get(col)
-            if col == "reprovado" and _is_sim(v):
+            v = _norm(row.get(col))
+            if v in ("não conforme", "nao conforme", "reprovado", "nc", "nok", "falha", "fail", "0", "false"):
                 return True
-            if col == "aprovado" and _is_nao(v):
+            if v in ("conforme", "aprovado", "ok", "1", "true"):
+                return False
+
+    # 4) fallback: se alguma coluna “item/criterio/teste” estiver marcada como NOK/NC etc.
+    for c in row.index:
+        cl = str(c).strip().lower()
+        if any(k in cl for k in ("item", "check", "criterio", "critério", "etapa", "teste")):
+            v = _norm(row.get(c))
+            if v in ("não conforme", "nao conforme", "reprovado", "nc", "nok", "falha", "fail"):
                 return True
+
     return False
 
+# ✅ CORRIGIDO: último registro por série (por data) + fallback “qualquer falha na série”
 def calcular_aprovacao(df_checks: pd.DataFrame, df_apont: pd.DataFrame) -> tuple[float, int, int]:
     if df_checks is None or df_checks.empty or df_apont is None or df_apont.empty:
         return 0.0, 0, 0
-    if "numero_serie" not in df_apont.columns or "numero_serie" not in df_checks.columns:
+
+    if "numero_serie" not in df_apont.columns:
+        return 0.0, 0, 0
+
+    # checklist pode usar outro nome de série
+    serie_col = None
+    for cand in ("numero_serie", "nr_serie", "serie", "serial", "serial_number"):
+        if cand in df_checks.columns:
+            serie_col = cand
+            break
+    if not serie_col:
         return 0.0, 0, 0
 
     series_validas = pd.Series(df_apont["numero_serie"].dropna().unique())
-    dfc = df_checks[df_checks["numero_serie"].isin(series_validas)].copy()
+    dfc = df_checks[df_checks[serie_col].isin(series_validas)].copy()
     if dfc.empty:
         return 0.0, 0, 0
 
-    if "data_hora" in dfc.columns:
-        dfc = dfc[dfc["data_hora"].notna()].copy()
-        dfc = dfc.sort_values(["numero_serie", "data_hora"])
-        ult = dfc.groupby("numero_serie", as_index=False).tail(1)
-    else:
-        ult = dfc.groupby("numero_serie", as_index=False).tail(1)
+    # coluna de data do checklist (se existir)
+    date_col = None
+    for cand in ("data_hora", "created_at", "createdAt", "timestamp", "data", "dt"):
+        if cand in dfc.columns:
+            date_col = cand
+            break
 
-    total_inspecionado = int(ult["numero_serie"].nunique())
+    if date_col:
+        dfc[date_col] = pd.to_datetime(dfc[date_col], errors="coerce")
+        dfc = dfc[dfc[date_col].notna()].copy()
+
+        # timezone
+        if getattr(dfc[date_col].dt, "tz", None) is not None:
+            dfc[date_col] = dfc[date_col].dt.tz_convert(TZ)
+        else:
+            dfc[date_col] = dfc[date_col].dt.tz_localize(TZ)
+
+        dfc = dfc.sort_values([serie_col, date_col])
+        ult = dfc.groupby(serie_col, as_index=False).tail(1)
+    else:
+        ult = dfc.groupby(serie_col, as_index=False).tail(1)
+
+    total_inspecionado = int(ult[serie_col].nunique())
     if total_inspecionado == 0:
         return 0.0, 0, 0
 
-    reprovados = 0
-    for _, row in ult.iterrows():
-        if _is_reprovado_row(row):
-            reprovados += 1
+    # reprovação pelo último registro da série
+    reprovados_ult = int(ult.apply(_is_reprovado_row, axis=1).sum())
+
+    # fallback: se QUALQUER registro da série tiver reprovação, conta reprovação
+    falha_por_serie = dfc.assign(__rep=dfc.apply(_is_reprovado_row, axis=1)) \
+                         .groupby(serie_col)["__rep"].any()
+    reprovados_any = int(falha_por_serie.sum())
+
+    reprovados = max(reprovados_ult, reprovados_any)
 
     aprovados = total_inspecionado - reprovados
     aprovacao_perc = (aprovados / total_inspecionado) * 100
@@ -549,7 +618,7 @@ def resumo_manga_pnm(data_inicio: datetime.date, data_fim: datetime.date) -> dic
         datetime.time(6, 0): 4, datetime.time(7, 0): 4, datetime.time(8, 0): 4,
         datetime.time(9, 0): 4, datetime.time(10, 0): 4, datetime.time(11, 0): 0,
         datetime.time(12, 0): 4, datetime.time(13, 0): 4, datetime.time(14, 0): 4,
-        datetime.time(15, 0): 4,
+        datetime.time(15, 0): 2,
     }
 
     total = int(len(df_apont))
@@ -652,10 +721,8 @@ def render_onepage_html(resumos: list[dict]) -> tuple[str, int]:
         """)
 
     # ✅ AUTO-SCALE:
-    # - desenha em largura base (BASE_W)
-    # - aplica scale = min(1, viewport/BASE_W)
     BASE_W = 1000  # largura base de design pros 3 cards
-    BASE_H = 300   # altura base do grid dentro do iframe
+    BASE_H = 300   # (não usado aqui, mas mantive igual ao seu)
 
     html = f"""
     <div id="wrap" style="width:100%; max-width:100%; overflow:hidden;">
@@ -754,13 +821,20 @@ def render_onepage_html(resumos: list[dict]) -> tuple[str, int]:
           line-height:1.05;
         }}
 
+        /* ✅ ATUALIZADO: mini-foot em até 2 linhas (sem cortar) */
         .mini-foot {{
-          font-size:11px;
-          color:rgba(255,255,255,0.72);
-          margin-top:5px;
-          white-space:nowrap;
-          overflow:hidden;
-          text-overflow:ellipsis;
+          font-size: 11px;
+          color: rgba(255,255,255,0.72);
+          margin-top: 6px;
+
+          white-space: normal;
+          overflow: hidden;
+
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+
+          word-break: break-word;
         }}
 
         .oee-row {{
@@ -1149,4 +1223,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
