@@ -55,8 +55,9 @@ env_path = Path(__file__).parent / "teste.env"
 if env_path.exists():
     load_dotenv(dotenv_path=env_path)
 
-SUPABASE_URL = os.getenv("SUPABASE_URL") or st.secrets.get("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY") or st.secrets.get("SUPABASE_KEY")
+SUPABASE_URL = os.getenv("SUPABASE_URL") or st.secrets.get("SUPABASE_URL", "")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY") or st.secrets.get("SUPABASE_KEY", "")
+
 if not SUPABASE_URL or not SUPABASE_KEY:
     raise RuntimeError("SUPABASE_URL / SUPABASE_KEY não encontrados (env ou secrets).")
 
@@ -64,11 +65,15 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 TZ = pytz.timezone("America/Sao_Paulo")
 
 GEMINI_API_KEY = (os.getenv("GEMINI_API_KEY") or st.secrets.get("GEMINI_API_KEY", "")).strip()
-GEMINI_MODEL = (os.getenv("GEMINI_MODEL") or st.secrets.get("GEMINI_MODEL", "gemini-2.5-flash")).strip()
+GEMINI_MODEL = (os.getenv("GEMINI_MODEL") or st.secrets.get("GEMINI_MODEL", "gemini-2.5-flash-lite")).strip()
 
-GEMINI_AVAILABLE = bool(GEMINI_API_KEY)
-if GEMINI_AVAILABLE:
-    genai.configure(api_key=GEMINI_API_KEY)
+GEMINI_AVAILABLE = False
+if GEMINI_API_KEY:
+    try:
+        genai.configure(api_key=GEMINI_API_KEY)
+        GEMINI_AVAILABLE = True
+    except Exception:
+        GEMINI_AVAILABLE = False
 
 # ==============================
 # CSS APP + GARANTE SIDEBAR EM TODAS AS PÁGINAS
