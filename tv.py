@@ -1008,6 +1008,8 @@ def _fmt_top3(top3: list[tuple[str, int]]) -> str:
     return " • ".join([f"{i+1}) {n} ({q})" for i, (n, q) in enumerate(top3)])
 
 def page_resumo_ia():
+    import textwrap  # ✅ garante que o HTML não fique “indentado” e não vire texto
+
     now = datetime.datetime.now(TZ)
     hoje = now.date()
     ini_mes = hoje.replace(day=1)
@@ -1035,10 +1037,10 @@ def page_resumo_ia():
     c_mp = filtrar_periodo(carregar_checklists_manga_pnm(), data_ini, data_fim)
 
     meta_total_hora = {
-        datetime.time(6,0):26, datetime.time(7,0):26, datetime.time(8,0):26,
-        datetime.time(9,0):26, datetime.time(10,0):26, datetime.time(11,0):6,
-        datetime.time(12,0):26, datetime.time(13,0):26, datetime.time(14,0):26,
-        datetime.time(15,0):12
+        datetime.time(6, 0): 26, datetime.time(7, 0): 26, datetime.time(8, 0): 26,
+        datetime.time(9, 0): 26, datetime.time(10, 0): 26, datetime.time(11, 0): 6,
+        datetime.time(12, 0): 26, datetime.time(13, 0): 26, datetime.time(14, 0): 26,
+        datetime.time(15, 0): 12
     }
     meta_mola_hora = {
         datetime.time(6, 0): 14, datetime.time(7, 0): 14, datetime.time(8, 0): 14,
@@ -1073,96 +1075,95 @@ def page_resumo_ia():
     top3_mola = pareto_top3(c_mola)
     top3_mp = pareto_top3(c_mp)
 
-    st.markdown(
-        f"""
-        <div class="v2-wrap">
-          <div class="v2-head">
-            <div>
-              <div class="v2-title">Resumo Inteligente • Performance & Qualidade</div>
-              <div class="v2-sub">Período: <b>{data_ini}</b> até <b>{data_fim}</b> • Atualizado: <b>{now.strftime("%H:%M:%S")}</b></div>
-            </div>
-            <div class="v2-pill">ONE PAGE • MONTH MODE</div>
-          </div>
-
-          <div class="v2-grid">
-            <div class="v2-card">
-              <h4>Linha de Montagem / Esteira (Total)</h4>
-              <div class="v2-row">
-                <div>
-                  <div class="v2-kpi">{perf_total:.1f}%</div>
-                  <div class="v2-label">Performance (Produzido / Meta)</div>
-                </div>
-                <div class="v2-chip">{_chip_perf(perf_total)}</div>
-              </div>
-              <div class="v2-row">
-                <div>
-                  <div class="v2-kpi">{q_total:.1f}%</div>
-                  <div class="v2-label">Qualidade • Inspec.: {insp_total} • Reprov.: {rep_total}</div>
-                </div>
-                <div class="v2-chip">{_chip_qual(q_total)}</div>
-              </div>
-              <div class="v2-label">Produzido: <b>{prod_total}</b> • Meta: <b>{meta_total}</b></div>
-            </div>
-
-            <div class="v2-card">
-              <h4>Montagem Mola</h4>
-              <div class="v2-row">
-                <div>
-                  <div class="v2-kpi">{perf_mola:.1f}%</div>
-                  <div class="v2-label">Performance (Produzido / Meta)</div>
-                </div>
-                <div class="v2-chip">{_chip_perf(perf_mola)}</div>
-              </div>
-              <div class="v2-row">
-                <div>
-                  <div class="v2-kpi">{q_mola:.1f}%</div>
-                  <div class="v2-label">Qualidade • Inspec.: {insp_mola} • Reprov.: {rep_mola}</div>
-                </div>
-                <div class="v2-chip">{_chip_qual(q_mola)}</div>
-              </div>
-              <div class="v2-label">Produzido: <b>{prod_mola}</b> • Meta: <b>{meta_mola}</b></div>
-            </div>
-
-            <div class="v2-card">
-              <h4>Montagem Manga & PNM</h4>
-              <div class="v2-row">
-                <div>
-                  <div class="v2-kpi">{perf_mp:.1f}%</div>
-                  <div class="v2-label">Performance (Produzido / Meta)</div>
-                </div>
-                <div class="v2-chip">{_chip_perf(perf_mp)}</div>
-              </div>
-              <div class="v2-row">
-                <div>
-                  <div class="v2-kpi">{q_mp:.1f}%</div>
-                  <div class="v2-label">Qualidade • Inspec.: {insp_mp} • Reprov.: {rep_mp}</div>
-                </div>
-                <div class="v2-chip">{_chip_qual(q_mp)}</div>
-              </div>
-              <div class="v2-label">Produzido: <b>{prod_mp}</b> • Meta: <b>{meta_mp}</b></div>
-            </div>
-          </div>
-
-          <div class="v2-line">
-            <div class="v2-box">
-              <h5>Pareto • Top 3 falhas (somente reprovações)</h5>
-              <ul class="v2-ul">
-                <li><b>Total/Esteira:</b> {_fmt_top3(top3_total)}</li>
-                <li><b>Mola:</b> {_fmt_top3(top3_mola)}</li>
-                <li><b>Manga & PNM:</b> {_fmt_top3(top3_mp)}</li>
-              </ul>
-              <div class="v2-btn-note">Se o Pareto ficar vazio e você sabe que reprovou, me mande o nome das colunas do checklist (pra eu mapear 100%).</div>
-            </div>
-
-            <div class="v2-box">
-              <h5>Insights (IA)</h5>
-              <div class="v2-btn-note">Clique para gerar um resumo acionável (curto) para reunião.</div>
-            </div>
-          </div>
+    html = f"""
+    <div class="v2-wrap">
+      <div class="v2-head">
+        <div>
+          <div class="v2-title">Resumo Inteligente • Performance & Qualidade</div>
+          <div class="v2-sub">Período: <b>{data_ini}</b> até <b>{data_fim}</b> • Atualizado: <b>{now.strftime("%H:%M:%S")}</b></div>
         </div>
-        """,
-        unsafe_allow_html=True
-    )
+        <div class="v2-pill">ONE PAGE • MONTH MODE</div>
+      </div>
+
+      <div class="v2-grid">
+        <div class="v2-card">
+          <h4>Linha de Montagem / Esteira (Total)</h4>
+          <div class="v2-row">
+            <div>
+              <div class="v2-kpi">{perf_total:.1f}%</div>
+              <div class="v2-label">Performance (Produzido / Meta)</div>
+            </div>
+            <div class="v2-chip">{_chip_perf(perf_total)}</div>
+          </div>
+          <div class="v2-row">
+            <div>
+              <div class="v2-kpi">{q_total:.1f}%</div>
+              <div class="v2-label">Qualidade • Inspec.: {insp_total} • Reprov.: {rep_total}</div>
+            </div>
+            <div class="v2-chip">{_chip_qual(q_total)}</div>
+          </div>
+          <div class="v2-label">Produzido: <b>{prod_total}</b> • Meta: <b>{meta_total}</b></div>
+        </div>
+
+        <div class="v2-card">
+          <h4>Montagem Mola</h4>
+          <div class="v2-row">
+            <div>
+              <div class="v2-kpi">{perf_mola:.1f}%</div>
+              <div class="v2-label">Performance (Produzido / Meta)</div>
+            </div>
+            <div class="v2-chip">{_chip_perf(perf_mola)}</div>
+          </div>
+          <div class="v2-row">
+            <div>
+              <div class="v2-kpi">{q_mola:.1f}%</div>
+              <div class="v2-label">Qualidade • Inspec.: {insp_mola} • Reprov.: {rep_mola}</div>
+            </div>
+            <div class="v2-chip">{_chip_qual(q_mola)}</div>
+          </div>
+          <div class="v2-label">Produzido: <b>{prod_mola}</b> • Meta: <b>{meta_mola}</b></div>
+        </div>
+
+        <div class="v2-card">
+          <h4>Montagem Manga &amp; PNM</h4>
+          <div class="v2-row">
+            <div>
+              <div class="v2-kpi">{perf_mp:.1f}%</div>
+              <div class="v2-label">Performance (Produzido / Meta)</div>
+            </div>
+            <div class="v2-chip">{_chip_perf(perf_mp)}</div>
+          </div>
+          <div class="v2-row">
+            <div>
+              <div class="v2-kpi">{q_mp:.1f}%</div>
+              <div class="v2-label">Qualidade • Inspec.: {insp_mp} • Reprov.: {rep_mp}</div>
+            </div>
+            <div class="v2-chip">{_chip_qual(q_mp)}</div>
+          </div>
+          <div class="v2-label">Produzido: <b>{prod_mp}</b> • Meta: <b>{meta_mp}</b></div>
+        </div>
+      </div>
+
+      <div class="v2-line">
+        <div class="v2-box">
+          <h5>Pareto • Top 3 falhas (somente reprovações)</h5>
+          <ul class="v2-ul">
+            <li><b>Total/Esteira:</b> {_fmt_top3(top3_total)}</li>
+            <li><b>Mola:</b> {_fmt_top3(top3_mola)}</li>
+            <li><b>Manga &amp; PNM:</b> {_fmt_top3(top3_mp)}</li>
+          </ul>
+          <div class="v2-btn-note">Se o Pareto ficar vazio e você sabe que reprovou, me mande o nome das colunas do checklist (pra eu mapear 100%).</div>
+        </div>
+
+        <div class="v2-box">
+          <h5>Insights (IA)</h5>
+          <div class="v2-btn-note">Clique para gerar um resumo acionável (curto) para reunião.</div>
+        </div>
+      </div>
+    </div>
+    """
+
+    st.markdown(textwrap.dedent(html), unsafe_allow_html=True)
 
     st.write("")
     cols = st.columns([1, 2])
@@ -1182,12 +1183,18 @@ def page_resumo_ia():
         else:
             payload = {
                 "periodo": f"{data_ini} até {data_fim}",
-                "total": {"performance_pct": perf_total, "qualidade_pct": q_total, "produzido": prod_total, "meta": meta_total,
-                          "inspecionado": insp_total, "reprovados": rep_total, "pareto_top3": top3_total},
-                "mola": {"performance_pct": perf_mola, "qualidade_pct": q_mola, "produzido": prod_mola, "meta": meta_mola,
-                         "inspecionado": insp_mola, "reprovados": rep_mola, "pareto_top3": top3_mola},
-                "manga_pnm": {"performance_pct": perf_mp, "qualidade_pct": q_mp, "produzido": prod_mp, "meta": meta_mp,
-                              "inspecionado": insp_mp, "reprovados": rep_mp, "pareto_top3": top3_mp},
+                "total": {
+                    "performance_pct": perf_total, "qualidade_pct": q_total, "produzido": prod_total, "meta": meta_total,
+                    "inspecionado": insp_total, "reprovados": rep_total, "pareto_top3": top3_total
+                },
+                "mola": {
+                    "performance_pct": perf_mola, "qualidade_pct": q_mola, "produzido": prod_mola, "meta": meta_mola,
+                    "inspecionado": insp_mola, "reprovados": rep_mola, "pareto_top3": top3_mola
+                },
+                "manga_pnm": {
+                    "performance_pct": perf_mp, "qualidade_pct": q_mp, "produzido": prod_mp, "meta": meta_mp,
+                    "inspecionado": insp_mp, "reprovados": rep_mp, "pareto_top3": top3_mp
+                },
             }
 
             prompt = f"""
@@ -1213,7 +1220,6 @@ Dados:
     if st.session_state.get("insight_ia_mes"):
         st.markdown("### Resultado IA")
         st.text_area("", value=st.session_state["insight_ia_mes"], height=240)
-
 # ==============================
 # MAIN
 # ==============================
