@@ -44,35 +44,27 @@ env_path = Path(__file__).parent / "teste.env"
 if env_path.exists():
     load_dotenv(dotenv_path=env_path)
 
-# --------------------------------
-# SUPABASE
-# --------------------------------
+# ==============================
+# ENV / SUPABASE / GEMINI
+# ==============================
+env_path = Path(__file__).parent / "teste.env"
+if env_path.exists():
+    load_dotenv(dotenv_path=env_path)
+
 SUPABASE_URL = os.getenv("SUPABASE_URL") or st.secrets.get("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY") or st.secrets.get("SUPABASE_KEY")
-
 if not SUPABASE_URL or not SUPABASE_KEY:
     raise RuntimeError("SUPABASE_URL / SUPABASE_KEY não encontrados (env ou secrets).")
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
-
-# --------------------------------
-# TIMEZONE
-# --------------------------------
 TZ = pytz.timezone("America/Sao_Paulo")
 
-# --------------------------------
-# OPENAI
-# --------------------------------
-OPENAI_API_KEY = (os.getenv("OPENAI_API_KEY") or st.secrets.get("OPENAI_API_KEY", "")).strip()
-OPENAI_MODEL = (os.getenv("OPENAI_MODEL") or st.secrets.get("OPENAI_MODEL", "gpt-4.1")).strip()
+GEMINI_API_KEY = (os.getenv("GEMINI_API_KEY") or st.secrets.get("GEMINI_API_KEY", "")).strip()
+GEMINI_MODEL = (os.getenv("GEMINI_MODEL") or st.secrets.get("GEMINI_MODEL", "gemini-1.5-flash")).strip()
 
-openai_client = None
-if OPENAI_AVAILABLE and OPENAI_API_KEY:
-    try:
-        openai_client = OpenAI(api_key=OPENAI_API_KEY)
-    except Exception as e:
-        openai_client = None
-        print("Erro ao inicializar OpenAI:", e)
+GEMINI_AVAILABLE = bool(GEMINI_API_KEY)
+if GEMINI_AVAILABLE:
+    genai.configure(api_key=GEMINI_API_KEY)
 
 # ==============================
 # CSS APP + GARANTE SIDEBAR EM TODAS AS PÁGINAS
@@ -1532,6 +1524,18 @@ def _build_page2_html(data_ini, data_fim, now, cards, paretos):
     """
     return html
 
+def _gemini_generate_text(prompt: str) -> str:
+    if not GEMINI_AVAILABLE:
+        return "GEMINI_API_KEY não configurada."
+
+    try:
+        model = genai.GenerativeModel(GEMINI_MODEL)
+        resp = model.generate_content(prompt)
+        txt = getattr(resp, "text", "") or ""
+        return txt.strip() if txt else "Não consegui gerar resposta desta vez."
+    except Exception as e:
+        return f"Erro ao consultar Gemini: {e}"
+
 def page_resumo_ia():
     st.markdown(
         """
@@ -1783,10 +1787,8 @@ def page_resumo_ia():
     }
 
     if gerar:
-        if not OPENAI_AVAILABLE:
-            st.error("Pacote 'openai' não instalado. Adicione em requirements.txt: openai")
-        elif not openai_client:
-            st.error("OPENAI_API_KEY não configurada no teste.env.")
+        if not GEMINI_AVAILABLE:
+            st.error("GEMINI_API_KEY não configurada.")
         else:
             prompt_resumo = f"""
 Você é um analista sênior de produção e qualidade.
@@ -1802,15 +1804,8 @@ Dados:
 {payload}
 """.strip()
 
-            try:
-                with st.spinner("Gerando resumo..."):
-                    resp = openai_client.responses.create(
-                        model=OPENAI_MODEL,
-                        input=prompt_resumo
-                    )
-                txt = (getattr(resp, "output_text", "") or "").strip()
-            except Exception as e:
-                txt = f"Erro ao gerar resumo com a OpenAI: {e}"
+            with st.spinner("Gerando resumo..."):
+                txt = _gemini_generate_text(prompt_resumo)
 
             if txt:
                 st.session_state["p2_chat_messages"].append(
@@ -1830,11 +1825,14 @@ Dados:
         with st.chat_message("user"):
             st.markdown(pergunta)
 
-        if not OPENAI_AVAILABLE:
-            resposta = "O pacote openai não está instalado no ambiente."
-        elif not openai_client:
-            resposta = "A OPENAI_API_KEY não foi encontrada no teste.env."
+        if not GEMINI_AVAILABLE:
+            resposta = "A GEMINI_API_KEY não foi encontrada."
         else:
+            historico_txt = []
+            for m in st.session_state["p2_chat_messages"][-8:]:
+                papel = "Usuário" if m["role"] == "user" else "Assistente"
+                historico_txt.append(f"{papel}: {m['content']}")
+
             system_prompt = f"""
 Você é um copiloto de produção e qualidade industrial.
 Sempre responda em português do Brasil.
@@ -1845,27 +1843,22 @@ Não invente números.
 
 Base de dados do período:
 {payload}
-""".strip()
 
-            historico = [{"role": "system", "content": system_prompt}]
-            for m in st.session_state["p2_chat_messages"][-8:]:
-                historico.append({"role": m["role"], "content": m["content"]})
+Histórico recente:
+{chr(10).join(historico_txt)}
+""".strip()
 
             try:
                 with st.chat_message("assistant"):
                     with st.spinner("Pensando..."):
-                        resp = openai_client.responses.create(
-                            model=OPENAI_MODEL,
-                            input=historico
-                        )
-                        resposta = (getattr(resp, "output_text", "") or "").strip()
+                        resposta = _gemini_generate_text(system_prompt)
 
                     if not resposta:
                         resposta = "Não consegui gerar resposta desta vez."
 
                     st.markdown(resposta)
             except Exception as e:
-                resposta = f"Erro ao consultar a OpenAI: {e}"
+                resposta = f"Erro ao consultar Gemini: {e}"
                 with st.chat_message("assistant"):
                     st.markdown(resposta)
 
