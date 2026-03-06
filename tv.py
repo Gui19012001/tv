@@ -9,6 +9,10 @@ from dotenv import load_dotenv
 from supabase import create_client
 import textwrap
 import google.generativeai as genai
+import json
+import calendar
+import holidays
+from streamlit_mic_recorder import speech_to_text
 
 # OpenAI
 try:
@@ -1146,6 +1150,126 @@ def pareto_top3_mola(df_checks: pd.DataFrame) -> list[tuple[str, int]]:
     top = s.value_counts(dropna=True).head(3)
     return [(str(idx), int(val)) for idx, val in top.items()]
 
+def dias_uteis_mes_brasil(ano: int, mes: int) -> dict:
+    feriados_br = holidays.Brazil(years=ano)
+    ultimo_dia = calendar.monthrange(ano, mes)[1]
+
+    total = 0
+    passados = 0
+    restantes = 0
+
+    hoje = datetime.datetime.now(TZ).date()
+
+    for dia in range(1, ultimo_dia + 1):
+        dt = datetime.date(ano, mes, dia)
+        eh_util = dt.weekday() < 5 and dt not in feriados_br
+        if eh_util:
+            total += 1
+            if dt <= hoje:
+                passados += 1
+            else:
+                restantes += 1
+
+    return {
+        "total": total,
+        "passados": passados,
+        "restantes": restantes,
+    }
+
+def montar_payload_operacional(data_ini: datetime.date, data_fim: datetime.date) -> dict:
+    a_total = filtrar_periodo(carregar_apontamentos(), data_ini, data_fim)
+    c_total = filtrar_periodo(carregar_checklists(), data_ini, data_fim)
+
+    a_mola = filtrar_periodo(carregar_apontamentos_mola(), data_ini, data_fim)
+    c_mola = filtrar_periodo(carregar_checklists_mola(), data_ini, data_fim)
+
+    a_mp = filtrar_periodo(carregar_apontamentos_manga_pnm(), data_ini, data_fim)
+    c_mp = filtrar_periodo(carregar_checklists_manga_pnm(), data_ini, data_fim)
+
+    meta_total_hora = {
+        datetime.time(6, 0): 26, datetime.time(7, 0): 26, datetime.time(8, 0): 26,
+        datetime.time(9, 0): 26, datetime.time(10, 0): 26, datetime.time(11, 0): 6,
+        datetime.time(12, 0): 26, datetime.time(13, 0): 26, datetime.time(14, 0): 26,
+        datetime.time(15, 0): 12
+    }
+    meta_mola_hora = {
+        datetime.time(6, 0): 14, datetime.time(7, 0): 14, datetime.time(8, 0): 14,
+        datetime.time(9, 0): 14, datetime.time(10, 0): 14, datetime.time(11, 0): 14,
+        datetime.time(12, 0): 0,  datetime.time(13, 0): 14, datetime.time(14, 0): 14,
+        datetime.time(15, 0): 8,  datetime.time(16, 0): 14, datetime.time(17, 0): 1,
+    }
+    meta_mp_hora = {
+        datetime.time(6, 0): 4, datetime.time(7, 0): 4, datetime.time(8, 0): 4,
+        datetime.time(9, 0): 4, datetime.time(10, 0): 4, datetime.time(11, 0): 0,
+        datetime.time(12, 0): 4, datetime.time(13, 0): 4, datetime.time(14, 0): 4,
+        datetime.time(15, 0): 4,
+    }
+
+    meta_total = meta_mes_total(meta_total_hora, data_ini, data_fim)
+    meta_mola = meta_mes_total(meta_mola_hora, data_ini, data_fim)
+    meta_mp = meta_mes_total(meta_mp_hora, data_ini, data_fim)
+
+    prod_total = int(len(a_total))
+    prod_mola = int(len(a_mola))
+    prod_mp = int(len(a_mp))
+
+    perf_total = (prod_total / meta_total * 100) if meta_total > 0 else 0.0
+    perf_mola = (prod_mola / meta_mola * 100) if meta_mola > 0 else 0.0
+    perf_mp = (prod_mp / meta_mp * 100) if meta_mp > 0 else 0.0
+
+    q_total, insp_total, rep_total = calcular_aprovacao(c_total, a_total)
+    q_mola, insp_mola, rep_mola = calcular_aprovacao(c_mola, a_mola)
+    q_mp, insp_mp, rep_mp = calcular_aprovacao(c_mp, a_mp)
+
+    top3_total = pareto_top3(c_total)
+    top3_mola = pareto_top3_mola(c_mola)
+    top3_mp = pareto_top3(c_mp)
+
+    agora = datetime.datetime.now(TZ)
+    dias_uteis = dias_uteis_mes_brasil(agora.year, agora.month)
+
+    return {
+        "data_contexto": {
+            "agora_iso": agora.isoformat(),
+            "data_hoje": str(agora.date()),
+            "hora_atual": agora.strftime("%H:%M:%S"),
+            "mes_atual": agora.strftime("%m/%Y"),
+            "dias_uteis_brasil_mes_atual": dias_uteis,
+            "timezone": "America/Sao_Paulo",
+        },
+        "periodo_operacional": {
+            "inicio": str(data_ini),
+            "fim": str(data_fim),
+        },
+        "total": {
+            "performance_pct": round(perf_total, 2),
+            "qualidade_pct": round(q_total, 2),
+            "produzido": prod_total,
+            "meta": meta_total,
+            "inspecionado": insp_total,
+            "reprovados": rep_total,
+            "pareto_top3": top3_total
+        },
+        "mola": {
+            "performance_pct": round(perf_mola, 2),
+            "qualidade_pct": round(q_mola, 2),
+            "produzido": prod_mola,
+            "meta": meta_mola,
+            "inspecionado": insp_mola,
+            "reprovados": rep_mola,
+            "pareto_top3": top3_mola
+        },
+        "manga_pnm": {
+            "performance_pct": round(perf_mp, 2),
+            "qualidade_pct": round(q_mp, 2),
+            "produzido": prod_mp,
+            "meta": meta_mp,
+            "inspecionado": insp_mp,
+            "reprovados": rep_mp,
+            "pareto_top3": top3_mp
+        },
+    }
+
 def _build_page2_html(data_ini, data_fim, now, cards, paretos):
     def card_html(c):
         return f"""
@@ -1536,6 +1660,109 @@ def _gemini_generate_text(prompt: str) -> str:
     except Exception as e:
         return f"Erro ao consultar Gemini: {e}"
 
+def falar_no_navegador(texto: str):
+    texto_js = json.dumps(texto)
+    html_js = f"""
+    <script>
+      const texto = {texto_js};
+      const synth = window.speechSynthesis;
+      if (synth) {{
+        synth.cancel();
+        const u = new SpeechSynthesisUtterance(texto);
+        u.lang = "pt-BR";
+        u.rate = 1.0;
+        u.pitch = 1.0;
+        const voces = synth.getVoices ? synth.getVoices() : [];
+        const vozPT = voces.find(v => (v.lang || "").toLowerCase().startsWith("pt"));
+        if (vozPT) u.voice = vozPT;
+        synth.speak(u);
+      }}
+    </script>
+    """
+    components.html(html_js, height=0)
+
+def render_jarvis_avatar_html():
+    html_avatar = """
+    <div style="width:100%;display:flex;justify-content:center;align-items:center;margin:8px 0 16px 0;">
+      <div style="width:100%;max-width:980px;border-radius:28px;padding:22px;background:
+        radial-gradient(circle at 50% 35%, rgba(0,255,255,0.12), transparent 22%),
+        radial-gradient(circle at 20% 20%, rgba(0,140,255,0.18), transparent 28%),
+        linear-gradient(135deg,#041224 0%,#071C38 55%,#0A2747 100%);
+        border:1px solid rgba(255,255,255,0.08);
+        box-shadow:0 18px 40px rgba(0,0,0,0.24);">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+          <div>
+            <div style="font-size:26px;font-weight:900;color:#F4F9FF;letter-spacing:.8px;">JARVIS INDUSTRIAL</div>
+            <div style="font-size:13px;color:rgba(234,242,255,0.78);margin-top:4px;">
+              Voz, contexto operacional e perguntas gerais de apoio executivo
+            </div>
+          </div>
+          <div style="padding:8px 14px;border-radius:999px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.12);font-size:11px;font-weight:900;color:#DDEBFF;">
+            VOICE READY
+          </div>
+        </div>
+
+        <div style="display:flex;justify-content:center;align-items:center;margin-top:24px;">
+          <div class="jarvis-orb-wrap">
+            <div class="jarvis-ring ring1"></div>
+            <div class="jarvis-ring ring2"></div>
+            <div class="jarvis-ring ring3"></div>
+            <div class="jarvis-core"></div>
+          </div>
+        </div>
+
+        <div style="display:flex;justify-content:center;gap:8px;margin-top:18px;">
+          <div class="jarvis-bar"></div>
+          <div class="jarvis-bar"></div>
+          <div class="jarvis-bar"></div>
+          <div class="jarvis-bar"></div>
+          <div class="jarvis-bar"></div>
+          <div class="jarvis-bar"></div>
+        </div>
+      </div>
+    </div>
+
+    <style>
+      .jarvis-orb-wrap{
+        position:relative;width:180px;height:180px;display:flex;align-items:center;justify-content:center;
+      }
+      .jarvis-core{
+        width:62px;height:62px;border-radius:50%;
+        background:radial-gradient(circle at 35% 35%, #9BFFFF 0%, #37D8FF 35%, #0E89FF 100%);
+        box-shadow:0 0 30px rgba(55,216,255,.55), 0 0 60px rgba(14,137,255,.35);
+        animation: jarvisPulse 2.2s ease-in-out infinite;
+      }
+      .jarvis-ring{
+        position:absolute;border-radius:50%;border:2px solid rgba(120,220,255,.6);
+        box-shadow:0 0 18px rgba(0,194,255,.18);
+      }
+      .ring1{width:92px;height:92px;animation: spinA 5s linear infinite;}
+      .ring2{width:132px;height:132px;border-style:dashed;animation: spinB 8s linear infinite;}
+      .ring3{width:176px;height:176px;opacity:.7;animation: spinA 11s linear infinite;}
+      .jarvis-bar{
+        width:8px;height:22px;border-radius:999px;
+        background:linear-gradient(180deg,#7DF6FF 0%, #159DFF 100%);
+        animation: eq 1.2s ease-in-out infinite;
+      }
+      .jarvis-bar:nth-child(2){animation-delay:.15s}
+      .jarvis-bar:nth-child(3){animation-delay:.3s}
+      .jarvis-bar:nth-child(4){animation-delay:.45s}
+      .jarvis-bar:nth-child(5){animation-delay:.6s}
+      .jarvis-bar:nth-child(6){animation-delay:.75s}
+      @keyframes spinA{from{transform:rotate(0)}to{transform:rotate(360deg)}}
+      @keyframes spinB{from{transform:rotate(360deg)}to{transform:rotate(0)}}
+      @keyframes jarvisPulse{
+        0%,100%{transform:scale(1)}
+        50%{transform:scale(1.16)}
+      }
+      @keyframes eq{
+        0%,100%{height:14px;opacity:.7}
+        50%{height:34px;opacity:1}
+      }
+    </style>
+    """
+    components.html(html_avatar, height=360, scrolling=False)
+
 def page_resumo_ia():
     st.markdown(
         """
@@ -1630,98 +1857,48 @@ def page_resumo_ia():
         data_ini = st.session_state.get("f_ini_val", hoje)
         data_fim = st.session_state.get("f_fim_val", hoje)
 
-    a_total = filtrar_periodo(carregar_apontamentos(), data_ini, data_fim)
-    c_total = filtrar_periodo(carregar_checklists(), data_ini, data_fim)
-
-    a_mola = filtrar_periodo(carregar_apontamentos_mola(), data_ini, data_fim)
-    c_mola = filtrar_periodo(carregar_checklists_mola(), data_ini, data_fim)
-
-    a_mp = filtrar_periodo(carregar_apontamentos_manga_pnm(), data_ini, data_fim)
-    c_mp = filtrar_periodo(carregar_checklists_manga_pnm(), data_ini, data_fim)
-
-    meta_total_hora = {
-        datetime.time(6, 0): 26, datetime.time(7, 0): 26, datetime.time(8, 0): 26,
-        datetime.time(9, 0): 26, datetime.time(10, 0): 26, datetime.time(11, 0): 6,
-        datetime.time(12, 0): 26, datetime.time(13, 0): 26, datetime.time(14, 0): 26,
-        datetime.time(15, 0): 12
-    }
-    meta_mola_hora = {
-        datetime.time(6, 0): 14, datetime.time(7, 0): 14, datetime.time(8, 0): 14,
-        datetime.time(9, 0): 14, datetime.time(10, 0): 14, datetime.time(11, 0): 14,
-        datetime.time(12, 0): 0,  datetime.time(13, 0): 14, datetime.time(14, 0): 14,
-        datetime.time(15, 0): 8,  datetime.time(16, 0): 14, datetime.time(17, 0): 1,
-    }
-    meta_mp_hora = {
-        datetime.time(6, 0): 4, datetime.time(7, 0): 4, datetime.time(8, 0): 4,
-        datetime.time(9, 0): 4, datetime.time(10, 0): 4, datetime.time(11, 0): 0,
-        datetime.time(12, 0): 4, datetime.time(13, 0): 4, datetime.time(14, 0): 4,
-        datetime.time(15, 0): 4,
-    }
-
-    meta_total = meta_mes_total(meta_total_hora, data_ini, data_fim)
-    meta_mola = meta_mes_total(meta_mola_hora, data_ini, data_fim)
-    meta_mp = meta_mes_total(meta_mp_hora, data_ini, data_fim)
-
-    prod_total = int(len(a_total))
-    prod_mola = int(len(a_mola))
-    prod_mp = int(len(a_mp))
-
-    perf_total = (prod_total / meta_total * 100) if meta_total > 0 else 0.0
-    perf_mola = (prod_mola / meta_mola * 100) if meta_mola > 0 else 0.0
-    perf_mp = (prod_mp / meta_mp * 100) if meta_mp > 0 else 0.0
-
-    q_total, insp_total, rep_total = calcular_aprovacao(c_total, a_total)
-    q_mola, insp_mola, rep_mola = calcular_aprovacao(c_mola, a_mola)
-    q_mp, insp_mp, rep_mp = calcular_aprovacao(c_mp, a_mp)
-
-    top3_total = pareto_top3(c_total)
-    top3_mola = pareto_top3_mola(c_mola)
-    top3_mp = pareto_top3(c_mp)
-
-    s_total_txt, s_total_class = _status_class(perf_total, q_total)
-    s_mola_txt, s_mola_class = _status_class(perf_mola, q_mola)
-    s_mp_txt, s_mp_class = _status_class(perf_mp, q_mp)
+    payload = montar_payload_operacional(data_ini, data_fim)
 
     cards = [
         {
             "nome": "Linha de Montagem / Esteira (Total)",
-            "produzido": prod_total,
-            "meta": meta_total,
-            "performance": perf_total,
-            "qualidade": q_total,
-            "inspecionado": insp_total,
-            "reprovados": rep_total,
-            "status_txt": s_total_txt,
-            "status_class": s_total_class,
+            "produzido": payload["total"]["produzido"],
+            "meta": payload["total"]["meta"],
+            "performance": payload["total"]["performance_pct"],
+            "qualidade": payload["total"]["qualidade_pct"],
+            "inspecionado": payload["total"]["inspecionado"],
+            "reprovados": payload["total"]["reprovados"],
+            "status_txt": _status_class(payload["total"]["performance_pct"], payload["total"]["qualidade_pct"])[0],
+            "status_class": _status_class(payload["total"]["performance_pct"], payload["total"]["qualidade_pct"])[1],
         },
         {
             "nome": "Montagem Mola",
-            "produzido": prod_mola,
-            "meta": meta_mola,
-            "performance": perf_mola,
-            "qualidade": q_mola,
-            "inspecionado": insp_mola,
-            "reprovados": rep_mola,
-            "status_txt": s_mola_txt,
-            "status_class": s_mola_class,
+            "produzido": payload["mola"]["produzido"],
+            "meta": payload["mola"]["meta"],
+            "performance": payload["mola"]["performance_pct"],
+            "qualidade": payload["mola"]["qualidade_pct"],
+            "inspecionado": payload["mola"]["inspecionado"],
+            "reprovados": payload["mola"]["reprovados"],
+            "status_txt": _status_class(payload["mola"]["performance_pct"], payload["mola"]["qualidade_pct"])[0],
+            "status_class": _status_class(payload["mola"]["performance_pct"], payload["mola"]["qualidade_pct"])[1],
         },
         {
             "nome": "Montagem Manga & PNM",
-            "produzido": prod_mp,
-            "meta": meta_mp,
-            "performance": perf_mp,
-            "qualidade": q_mp,
-            "inspecionado": insp_mp,
-            "reprovados": rep_mp,
-            "status_txt": s_mp_txt,
-            "status_class": s_mp_class,
+            "produzido": payload["manga_pnm"]["produzido"],
+            "meta": payload["manga_pnm"]["meta"],
+            "performance": payload["manga_pnm"]["performance_pct"],
+            "qualidade": payload["manga_pnm"]["qualidade_pct"],
+            "inspecionado": payload["manga_pnm"]["inspecionado"],
+            "reprovados": payload["manga_pnm"]["reprovados"],
+            "status_txt": _status_class(payload["manga_pnm"]["performance_pct"], payload["manga_pnm"]["qualidade_pct"])[0],
+            "status_class": _status_class(payload["manga_pnm"]["performance_pct"], payload["manga_pnm"]["qualidade_pct"])[1],
         },
     ]
 
     paretos = {
-        "total": top3_total,
-        "mola": top3_mola,
-        "manga_pnm": top3_mp,
+        "total": payload["total"]["pareto_top3"],
+        "mola": payload["mola"]["pareto_top3"],
+        "manga_pnm": payload["manga_pnm"]["pareto_top3"],
     }
 
     dashboard_html = _build_page2_html(data_ini, data_fim, now, cards, paretos)
@@ -1755,37 +1932,6 @@ def page_resumo_ia():
             }
         ]
 
-    payload = {
-        "periodo": f"{data_ini} até {data_fim}",
-        "total": {
-            "performance_pct": round(perf_total, 2),
-            "qualidade_pct": round(q_total, 2),
-            "produzido": prod_total,
-            "meta": meta_total,
-            "inspecionado": insp_total,
-            "reprovados": rep_total,
-            "pareto_top3": top3_total
-        },
-        "mola": {
-            "performance_pct": round(perf_mola, 2),
-            "qualidade_pct": round(q_mola, 2),
-            "produzido": prod_mola,
-            "meta": meta_mola,
-            "inspecionado": insp_mola,
-            "reprovados": rep_mola,
-            "pareto_top3": top3_mola
-        },
-        "manga_pnm": {
-            "performance_pct": round(perf_mp, 2),
-            "qualidade_pct": round(q_mp, 2),
-            "produzido": prod_mp,
-            "meta": meta_mp,
-            "inspecionado": insp_mp,
-            "reprovados": rep_mp,
-            "pareto_top3": top3_mp
-        },
-    }
-
     if gerar:
         if not GEMINI_AVAILABLE:
             st.error("GEMINI_API_KEY não configurada.")
@@ -1801,7 +1947,7 @@ Monte um resumo para reunião com esta estrutura:
 4. Fechamento em linguagem de gestor
 
 Dados:
-{payload}
+{json.dumps(payload, ensure_ascii=False, indent=2)}
 """.strip()
 
             with st.spinner("Gerando resumo..."):
@@ -1842,7 +1988,7 @@ Quando fizer recomendação, conecte com performance, qualidade e Pareto.
 Não invente números.
 
 Base de dados do período:
-{payload}
+{json.dumps(payload, ensure_ascii=False, indent=2)}
 
 Histórico recente:
 {chr(10).join(historico_txt)}
@@ -1868,6 +2014,191 @@ Histórico recente:
 
     st.markdown("</div>", unsafe_allow_html=True)
 
+def page_jarvis():
+    st.markdown(
+        """
+        <style>
+        .jarvis-wrap{
+            border-radius:22px;
+            padding:16px;
+            background:
+              radial-gradient(circle at top left, rgba(0,153,255,0.10), transparent 30%),
+              linear-gradient(135deg, #041224 0%, #071C38 55%, #0A2747 100%);
+            border:1px solid rgba(255,255,255,0.08);
+            box-shadow:0 14px 30px rgba(0,0,0,0.18);
+            margin-top:12px;
+        }
+        .jarvis-title{
+            color:#F3F7FF;
+            font-size:18px;
+            font-weight:900;
+            margin-bottom:12px;
+        }
+        div[data-testid="stChatMessage"]{
+            background: linear-gradient(180deg, rgba(7,17,36,0.92) 0%, rgba(11,27,51,0.92) 100%) !important;
+            border: 1px solid rgba(255,255,255,0.08) !important;
+            border-radius: 16px !important;
+            padding: 10px 14px !important;
+            margin-bottom: 10px !important;
+            color: #EAF2FF !important;
+        }
+        div[data-testid="stChatMessage"] p,
+        div[data-testid="stChatMessage"] span,
+        div[data-testid="stChatMessage"] div,
+        div[data-testid="stChatMessage"] strong,
+        div[data-testid="stChatMessage"] li{
+            color: #EAF2FF !important;
+        }
+        div[data-testid="stChatInput"]{
+            background: linear-gradient(180deg, #071124 0%, #0B1B33 100%) !important;
+            border: 1px solid rgba(255,255,255,0.08) !important;
+            border-radius: 16px !important;
+            padding: 8px !important;
+        }
+        div[data-testid="stChatInput"] textarea,
+        div[data-testid="stChatInput"] input{
+            background: transparent !important;
+            color: #FFFFFF !important;
+        }
+        div[data-testid="stChatInput"] textarea::placeholder,
+        div[data-testid="stChatInput"] input::placeholder{
+            color: rgba(234,242,255,0.60) !important;
+        }
+        .jarvis-button .stButton button{
+            background: linear-gradient(180deg, #071124 0%, #0B1B33 100%) !important;
+            color: #F3F7FF !important;
+            border: 1px solid rgba(255,255,255,0.10) !important;
+            border-radius: 12px !important;
+            font-weight: 800 !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+
+    now = datetime.datetime.now(TZ)
+    hoje = now.date()
+    ini_mes = hoje.replace(day=1)
+
+    modo = st.sidebar.selectbox(
+        "Modo JARVIS",
+        ["Mês atual", "Usar filtro do One Page (Início/Fim)"],
+        index=0,
+        key="jarvis_modo"
+    )
+
+    if modo == "Mês atual":
+        data_ini = ini_mes
+        data_fim = hoje
+    else:
+        data_ini = st.session_state.get("f_ini_val", hoje)
+        data_fim = st.session_state.get("f_fim_val", hoje)
+
+    payload = montar_payload_operacional(data_ini, data_fim)
+    render_jarvis_avatar_html()
+
+    st.markdown("<div class='jarvis-wrap'>", unsafe_allow_html=True)
+    st.markdown("<div class='jarvis-title'>JARVIS • Assistente Executivo-Industrial</div>", unsafe_allow_html=True)
+
+    col1, col2, col3 = st.columns([1, 1, 1])
+    with col1:
+        auto_falar = st.toggle("Falar resposta", value=True, key="jarvis_auto_falar")
+    with col2:
+        usar_mic = st.toggle("Usar microfone", value=True, key="jarvis_mic_toggle")
+    with col3:
+        if st.button("Limpar conversa", use_container_width=True, key="jarvis_limpar"):
+            st.session_state["jarvis_messages"] = [
+                {
+                    "role": "assistant",
+                    "content": "Sou o JARVIS. Posso analisar seus dados operacionais e também responder perguntas gerais, como dias úteis do mês, datas, cálculos simples e apoio executivo."
+                }
+            ]
+            st.rerun()
+
+    if "jarvis_messages" not in st.session_state:
+        st.session_state["jarvis_messages"] = [
+            {
+                "role": "assistant",
+                "content": "Sou o JARVIS. Posso analisar seus dados operacionais e também responder perguntas gerais, como dias úteis do mês, datas, cálculos simples e apoio executivo."
+            }
+        ]
+
+    st.markdown(
+        f"""
+        <div style="margin:10px 0 14px 0;padding:12px 14px;border-radius:16px;
+                    background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);color:#EAF2FF;">
+            <b>Contexto carregado:</b> período operacional de <b>{payload["periodo_operacional"]["inicio"]}</b> até
+            <b>{payload["periodo_operacional"]["fim"]}</b> • hoje <b>{payload["data_contexto"]["data_hoje"]}</b> •
+            dias úteis do mês no Brasil: <b>{payload["data_contexto"]["dias_uteis_brasil_mes_atual"]["total"]}</b>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    pergunta_voz = None
+    if usar_mic:
+        st.markdown("<div class='jarvis-button'>", unsafe_allow_html=True)
+        pergunta_voz = speech_to_text(
+            language="pt-BR",
+            start_prompt="🎤 Falar com JARVIS",
+            stop_prompt="⏹️ Parar",
+            just_once=True,
+            use_container_width=True,
+            key="jarvis_stt"
+        )
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    for msg in st.session_state["jarvis_messages"]:
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
+
+    pergunta_texto = st.chat_input("Pergunte qualquer coisa ao JARVIS...")
+    pergunta = pergunta_voz or pergunta_texto
+
+    if pergunta:
+        st.session_state["jarvis_messages"].append({"role": "user", "content": pergunta})
+        with st.chat_message("user"):
+            st.markdown(pergunta)
+
+        historico_txt = []
+        for m in st.session_state["jarvis_messages"][-10:]:
+            papel = "Usuário" if m["role"] == "user" else "Assistente"
+            historico_txt.append(f"{papel}: {m['content']}")
+
+        prompt = f"""
+Você é o JARVIS, um assistente executivo-industrial em português do Brasil.
+
+SEU PAPEL:
+- Responder sobre os dados do painel operacional com precisão.
+- Também responder perguntas gerais úteis para gestão, como calendário, dias úteis do mês no Brasil, contagens de datas, matemática simples, organização, comunicação, resumos, comparações e apoio executivo.
+- Quando a pergunta for sobre produção, qualidade, Pareto, meta, aprovação, atraso, indicadores ou linhas, use SOMENTE os dados do payload.
+- Quando a pergunta for geral e puder ser respondida com data, calendário, raciocínio ou o contexto já fornecido, responda normalmente.
+- Se a pergunta exigir internet, notícia atual, legislação detalhada ou algo não presente no payload/contexto, diga com clareza que não está no painel.
+- Seja direto, útil e com linguagem executiva.
+- Não invente números.
+
+CONTEXTO DO PAINEL:
+{json.dumps(payload, ensure_ascii=False, indent=2)}
+
+HISTÓRICO RECENTE:
+{chr(10).join(historico_txt)}
+
+PERGUNTA ATUAL:
+{pergunta}
+""".strip()
+
+        with st.chat_message("assistant"):
+            with st.spinner("JARVIS processando..."):
+                resposta = _gemini_generate_text(prompt)
+            st.markdown(resposta)
+
+        st.session_state["jarvis_messages"].append({"role": "assistant", "content": resposta})
+
+        if auto_falar and resposta and not resposta.lower().startswith("erro ao consultar"):
+            falar_no_navegador(resposta)
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
 # ==============================
 # MAIN
 # ==============================
@@ -1881,7 +2212,11 @@ def main():
     hoje = now.date()
 
     st.sidebar.markdown("## Menu")
-    pagina = st.sidebar.radio("Página", ["One Page (TV)", "Resumo Inteligente + IA"], index=0)
+    pagina = st.sidebar.radio(
+        "Página",
+        ["One Page (TV)", "Resumo Inteligente + IA", "JARVIS Voice"],
+        index=0
+    )
 
     st.sidebar.markdown("---")
     st.sidebar.markdown("### Filtro (Data) — One Page")
@@ -1902,12 +2237,20 @@ def main():
             unsafe_allow_html=True
         )
         page_onepage(data_inicio, data_fim)
-    else:
+
+    elif pagina == "Resumo Inteligente + IA":
         st.markdown(
             "<div class='op-sub'>Modo: <b>Resumo Inteligente + IA</b></div>",
             unsafe_allow_html=True
         )
         page_resumo_ia()
+
+    else:
+        st.markdown(
+            "<div class='op-sub'>Modo: <b>JARVIS Voice</b></div>",
+            unsafe_allow_html=True
+        )
+        page_jarvis()
 
     st.markdown(
         f"<p style='color:rgba(11,27,51,0.55);text-align:center;margin-top:10px;'>Atualizado às <b>{now.strftime('%H:%M:%S')}</b></p>",
