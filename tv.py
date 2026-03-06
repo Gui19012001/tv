@@ -1037,6 +1037,105 @@ def _status_class(perf: float, qual: float) -> tuple[str, str]:
         return "ATENÇÃO", "p2-warn"
     return "CRÍTICO", "p2-critical"
 
+def _guess_fail_col(df: pd.DataFrame) -> str | None:
+    if df is None or df.empty:
+        return None
+
+    cols_map = {str(c).strip().lower(): c for c in df.columns}
+
+    prioridade_alta = [
+        "item",
+        "falha",
+        "defeito",
+        "motivo_falha",
+        "motivo",
+        "causa",
+        "descricao_falha",
+        "descrição_falha",
+        "nao_conformidade",
+        "não_conformidade",
+        "problema"
+    ]
+
+    for cand in prioridade_alta:
+        if cand in cols_map:
+            return cols_map[cand]
+
+    prioridade_baixa = [
+        "observacao",
+        "observação",
+        "comentario",
+        "comentário",
+        "descricao",
+        "descrição"
+    ]
+
+    for cand in prioridade_baixa:
+        if cand in cols_map:
+            return cols_map[cand]
+
+    return None
+
+def pareto_top3(df_checks: pd.DataFrame) -> list[tuple[str, int]]:
+    if df_checks is None or df_checks.empty:
+        return []
+
+    fail_col = _guess_fail_col(df_checks)
+    if not fail_col or fail_col not in df_checks.columns:
+        return []
+
+    dfr = df_checks.copy()
+
+    mask_rep = dfr.apply(_is_reprovado_row, axis=1)
+    dfr = dfr[mask_rep].copy()
+    if dfr.empty:
+        return []
+
+    s = dfr[fail_col].astype(str).str.strip()
+    s = (
+        s.str.replace(r"\s+", " ", regex=True)
+         .str.replace("_", " ", regex=False)
+         .str.strip()
+    )
+
+    invalidos = {"", "nan", "none", "null", "-", "--", "n/a"}
+    s = s[~s.str.lower().isin(invalidos)]
+
+    if s.empty:
+        return []
+
+    top = s.value_counts(dropna=True).head(3)
+    return [(str(idx), int(val)) for idx, val in top.items()]
+
+def pareto_top3_mola(df_checks: pd.DataFrame) -> list[tuple[str, int]]:
+    if df_checks is None or df_checks.empty:
+        return []
+
+    if "item" not in df_checks.columns:
+        return pareto_top3(df_checks)
+
+    dfr = df_checks.copy()
+    mask_rep = dfr.apply(_is_reprovado_row, axis=1)
+    dfr = dfr[mask_rep].copy()
+    if dfr.empty:
+        return []
+
+    s = dfr["item"].astype(str).str.strip()
+    s = (
+        s.str.replace(r"\s+", " ", regex=True)
+         .str.replace("_", " ", regex=False)
+         .str.strip()
+    )
+
+    invalidos = {"", "nan", "none", "null", "-", "--", "n/a"}
+    s = s[~s.str.lower().isin(invalidos)]
+
+    if s.empty:
+        return []
+
+    top = s.value_counts(dropna=True).head(3)
+    return [(str(idx), int(val)) for idx, val in top.items()]
+
 def _build_page2_html(data_ini, data_fim, now, cards, paretos):
     def card_html(c):
         return f"""
@@ -1416,6 +1515,81 @@ def _build_page2_html(data_ini, data_fim, now, cards, paretos):
     return html
 
 def page_resumo_ia():
+    st.markdown(
+        """
+        <style>
+        .ia-wrap{
+            border-radius: 22px;
+            padding: 16px;
+            background:
+              radial-gradient(circle at top left, rgba(0,153,255,0.10), transparent 30%),
+              linear-gradient(135deg, #041224 0%, #071C38 55%, #0A2747 100%);
+            border: 1px solid rgba(255,255,255,0.08);
+            box-shadow: 0 14px 30px rgba(0,0,0,0.18);
+            margin-top: 12px;
+        }
+
+        .ia-title{
+            color: #F3F7FF;
+            font-size: 18px;
+            font-weight: 900;
+            margin-bottom: 12px;
+        }
+
+        div[data-testid="stChatMessage"]{
+            background: linear-gradient(180deg, rgba(7,17,36,0.92) 0%, rgba(11,27,51,0.92) 100%) !important;
+            border: 1px solid rgba(255,255,255,0.08) !important;
+            border-radius: 16px !important;
+            padding: 10px 14px !important;
+            margin-bottom: 10px !important;
+            color: #EAF2FF !important;
+        }
+
+        div[data-testid="stChatMessage"] p,
+        div[data-testid="stChatMessage"] span,
+        div[data-testid="stChatMessage"] div,
+        div[data-testid="stChatMessage"] strong,
+        div[data-testid="stChatMessage"] li{
+            color: #EAF2FF !important;
+        }
+
+        div[data-testid="stChatInput"]{
+            background: linear-gradient(180deg, #071124 0%, #0B1B33 100%) !important;
+            border: 1px solid rgba(255,255,255,0.08) !important;
+            border-radius: 16px !important;
+            padding: 8px !important;
+        }
+
+        div[data-testid="stChatInput"] textarea,
+        div[data-testid="stChatInput"] input{
+            background: transparent !important;
+            color: #FFFFFF !important;
+        }
+
+        div[data-testid="stChatInput"] textarea::placeholder,
+        div[data-testid="stChatInput"] input::placeholder{
+            color: rgba(234,242,255,0.60) !important;
+        }
+
+        div[data-testid="stChatInput"] button{
+            background: rgba(255,255,255,0.08) !important;
+            color: #FFFFFF !important;
+            border: 1px solid rgba(255,255,255,0.10) !important;
+            border-radius: 12px !important;
+        }
+
+        .p2-btn-wrap .stButton button{
+            background: linear-gradient(180deg, #071124 0%, #0B1B33 100%) !important;
+            color: #F3F7FF !important;
+            border: 1px solid rgba(255,255,255,0.10) !important;
+            border-radius: 12px !important;
+            font-weight: 800 !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+
     now = datetime.datetime.now(TZ)
     hoje = now.date()
     ini_mes = hoje.replace(day=1)
@@ -1479,7 +1653,7 @@ def page_resumo_ia():
     q_mp, insp_mp, rep_mp = calcular_aprovacao(c_mp, a_mp)
 
     top3_total = pareto_top3(c_total)
-    top3_mola = pareto_top3(c_mola)
+    top3_mola = pareto_top3_mola(c_mola)
     top3_mp = pareto_top3(c_mp)
 
     s_total_txt, s_total_class = _status_class(perf_total, q_total)
@@ -1532,13 +1706,16 @@ def page_resumo_ia():
     components.html(dashboard_html, height=560, scrolling=False)
 
     st.write("")
-    st.markdown("### Assistente IA da Operação")
+    st.markdown("<div class='ia-wrap'>", unsafe_allow_html=True)
+    st.markdown("<div class='ia-title'>Assistente IA da Operação</div>", unsafe_allow_html=True)
 
+    st.markdown("<div class='p2-btn-wrap'>", unsafe_allow_html=True)
     col1, col2 = st.columns([1, 1])
     with col1:
         gerar = st.button("Gerar resumo para reunião", use_container_width=True, key="btn_gerar_insight_p2")
     with col2:
         limpar_chat = st.button("Limpar conversa", use_container_width=True, key="btn_limpar_chat_p2")
+    st.markdown("</div>", unsafe_allow_html=True)
 
     if "p2_chat_messages" not in st.session_state:
         st.session_state["p2_chat_messages"] = [
@@ -1677,6 +1854,8 @@ Base de dados do período:
             st.session_state["p2_chat_messages"].append(
                 {"role": "assistant", "content": resposta}
             )
+
+    st.markdown("</div>", unsafe_allow_html=True)
 
 # ==============================
 # MAIN
