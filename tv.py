@@ -8,6 +8,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 from dotenv import load_dotenv
 from supabase import create_client
+import textwrap
 
 # OpenAI
 try:
