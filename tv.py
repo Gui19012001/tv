@@ -1007,9 +1007,393 @@ def _fmt_top3(top3: list[tuple[str, int]]) -> str:
         return "Sem reprovações no período (ou sem coluna de falha)."
     return " • ".join([f"{i+1}) {n} ({q})" for i, (n, q) in enumerate(top3)])
 
-def page_resumo_ia():
-    import textwrap  # ✅ garante que o HTML não fique “indentado” e não vire texto
+def _status_class(perf: float, qual: float) -> tuple[str, str]:
+    score = (perf * 0.55) + (qual * 0.45)
+    if score >= 98:
+        return "FORTE", "p2-ok"
+    if score >= 90:
+        return "ATENÇÃO", "p2-warn"
+    return "CRÍTICO", "p2-critical"
 
+def _build_page2_html(data_ini, data_fim, now, cards, paretos):
+    def card_html(c):
+        return f"""
+        <div class="p2-card">
+            <div class="p2-card-top">
+                <div>
+                    <div class="p2-card-title">{c['nome']}</div>
+                    <div class="p2-card-sub">Produzido: <b>{c['produzido']}</b> • Meta: <b>{c['meta']}</b></div>
+                </div>
+                <div class="p2-badge {c['status_class']}">{c['status_txt']}</div>
+            </div>
+
+            <div class="p2-kpi-grid">
+                <div class="p2-kpi-box">
+                    <div class="p2-kpi-label">Performance</div>
+                    <div class="p2-kpi-value">{c['performance']:.1f}%</div>
+                    <div class="p2-kpi-foot">Produzido / Meta</div>
+                </div>
+
+                <div class="p2-kpi-box">
+                    <div class="p2-kpi-label">Qualidade</div>
+                    <div class="p2-kpi-value">{c['qualidade']:.1f}%</div>
+                    <div class="p2-kpi-foot">Inspec.: {c['inspecionado']} • Reprov.: {c['reprovados']}</div>
+                </div>
+            </div>
+
+            <div class="p2-progress-wrap">
+                <div class="p2-progress-head">
+                    <span>Performance</span>
+                    <span>{c['performance']:.1f}%</span>
+                </div>
+                <div class="p2-progress">
+                    <div style="width:min({c['performance']:.1f}%,100%)"></div>
+                </div>
+            </div>
+
+            <div class="p2-progress-wrap">
+                <div class="p2-progress-head">
+                    <span>Qualidade</span>
+                    <span>{c['qualidade']:.1f}%</span>
+                </div>
+                <div class="p2-progress quality">
+                    <div style="width:min({c['qualidade']:.1f}%,100%)"></div>
+                </div>
+            </div>
+        </div>
+        """
+
+    def pareto_html(label, itens):
+        if not itens:
+            lis = "<li>Sem reprovações no período ou sem coluna de falha mapeada.</li>"
+        else:
+            lis = "".join(
+                [f"<li><span>{i+1}. {nome}</span><b>{qtd}</b></li>" for i, (nome, qtd) in enumerate(itens)]
+            )
+
+        return f"""
+        <div class="p2-pareto-card">
+            <div class="p2-pareto-title">{label}</div>
+            <ul>{lis}</ul>
+        </div>
+        """
+
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8"/>
+        <style>
+            * {{
+                box-sizing: border-box;
+                font-family: Inter, Segoe UI, Arial, sans-serif;
+            }}
+
+            body {{
+                margin: 0;
+                padding: 0;
+                background: transparent;
+                color: #EAF2FF;
+            }}
+
+            .p2-wrap {{
+                width: 100%;
+                border-radius: 26px;
+                padding: 18px;
+                background:
+                    radial-gradient(circle at top left, rgba(0, 153, 255, 0.20), transparent 28%),
+                    radial-gradient(circle at top right, rgba(0, 255, 200, 0.12), transparent 30%),
+                    linear-gradient(135deg, #041224 0%, #071C38 55%, #0A2747 100%);
+                border: 1px solid rgba(255,255,255,0.10);
+                box-shadow: 0 18px 40px rgba(0,0,0,0.24);
+            }}
+
+            .p2-header {{
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                gap: 12px;
+                margin-bottom: 18px;
+                flex-wrap: wrap;
+            }}
+
+            .p2-title {{
+                font-size: 20px;
+                font-weight: 900;
+                letter-spacing: .4px;
+                text-transform: uppercase;
+            }}
+
+            .p2-sub {{
+                font-size: 12px;
+                color: rgba(234,242,255,0.72);
+                margin-top: 4px;
+            }}
+
+            .p2-pill {{
+                padding: 8px 14px;
+                border-radius: 999px;
+                background: rgba(255,255,255,0.08);
+                border: 1px solid rgba(255,255,255,0.12);
+                font-size: 11px;
+                font-weight: 900;
+                color: #DDEBFF;
+            }}
+
+            .p2-cards {{
+                display: grid;
+                grid-template-columns: repeat(3, minmax(260px, 1fr));
+                gap: 14px;
+                margin-bottom: 16px;
+            }}
+
+            .p2-card {{
+                border-radius: 20px;
+                padding: 16px;
+                background: rgba(255,255,255,0.06);
+                border: 1px solid rgba(255,255,255,0.10);
+                box-shadow: inset 0 1px 0 rgba(255,255,255,0.05);
+                min-height: 250px;
+            }}
+
+            .p2-card-top {{
+                display: flex;
+                justify-content: space-between;
+                align-items: flex-start;
+                gap: 8px;
+                margin-bottom: 14px;
+            }}
+
+            .p2-card-title {{
+                font-size: 13px;
+                font-weight: 900;
+                text-transform: uppercase;
+                color: #F5F9FF;
+            }}
+
+            .p2-card-sub {{
+                font-size: 11px;
+                margin-top: 5px;
+                color: rgba(234,242,255,0.72);
+            }}
+
+            .p2-badge {{
+                padding: 7px 10px;
+                border-radius: 999px;
+                font-size: 10px;
+                font-weight: 900;
+                white-space: nowrap;
+                border: 1px solid transparent;
+            }}
+
+            .p2-ok {{
+                background: rgba(0, 210, 140, 0.14);
+                color: #8BFFD1;
+                border-color: rgba(0, 210, 140, 0.24);
+            }}
+
+            .p2-warn {{
+                background: rgba(255, 196, 0, 0.14);
+                color: #FFE48A;
+                border-color: rgba(255, 196, 0, 0.22);
+            }}
+
+            .p2-critical {{
+                background: rgba(255, 82, 82, 0.14);
+                color: #FFB0B0;
+                border-color: rgba(255, 82, 82, 0.22);
+            }}
+
+            .p2-kpi-grid {{
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 10px;
+                margin-bottom: 14px;
+            }}
+
+            .p2-kpi-box {{
+                border-radius: 16px;
+                padding: 12px;
+                background: rgba(255,255,255,0.05);
+                border: 1px solid rgba(255,255,255,0.08);
+            }}
+
+            .p2-kpi-label {{
+                font-size: 11px;
+                text-transform: uppercase;
+                color: rgba(234,242,255,0.74);
+                font-weight: 800;
+                margin-bottom: 8px;
+            }}
+
+            .p2-kpi-value {{
+                font-size: 28px;
+                font-weight: 950;
+                line-height: 1;
+                color: #FFFFFF;
+            }}
+
+            .p2-kpi-foot {{
+                margin-top: 7px;
+                font-size: 11px;
+                color: rgba(234,242,255,0.70);
+            }}
+
+            .p2-progress-wrap {{
+                margin-top: 10px;
+            }}
+
+            .p2-progress-head {{
+                display: flex;
+                justify-content: space-between;
+                font-size: 11px;
+                color: rgba(234,242,255,0.84);
+                margin-bottom: 6px;
+            }}
+
+            .p2-progress {{
+                height: 10px;
+                border-radius: 999px;
+                overflow: hidden;
+                background: rgba(255,255,255,0.08);
+                border: 1px solid rgba(255,255,255,0.08);
+            }}
+
+            .p2-progress > div {{
+                height: 100%;
+                border-radius: 999px;
+                background: linear-gradient(90deg, #00C2FF 0%, #3D8BFF 100%);
+            }}
+
+            .p2-progress.quality > div {{
+                background: linear-gradient(90deg, #00E5A8 0%, #00B894 100%);
+            }}
+
+            .p2-bottom {{
+                display: grid;
+                grid-template-columns: 1.2fr .8fr;
+                gap: 14px;
+            }}
+
+            .p2-panel {{
+                border-radius: 20px;
+                padding: 16px;
+                background: rgba(255,255,255,0.06);
+                border: 1px solid rgba(255,255,255,0.10);
+            }}
+
+            .p2-panel-title {{
+                font-size: 13px;
+                font-weight: 900;
+                text-transform: uppercase;
+                margin-bottom: 12px;
+                color: #F5F9FF;
+            }}
+
+            .p2-pareto-grid {{
+                display: grid;
+                grid-template-columns: repeat(3, 1fr);
+                gap: 12px;
+            }}
+
+            .p2-pareto-card {{
+                border-radius: 16px;
+                padding: 12px;
+                background: rgba(255,255,255,0.05);
+                border: 1px solid rgba(255,255,255,0.08);
+            }}
+
+            .p2-pareto-title {{
+                font-size: 11px;
+                font-weight: 900;
+                text-transform: uppercase;
+                color: #DCEBFF;
+                margin-bottom: 10px;
+            }}
+
+            .p2-pareto-card ul {{
+                padding-left: 18px;
+                margin: 0;
+            }}
+
+            .p2-pareto-card li {{
+                margin: 7px 0;
+                font-size: 12px;
+                color: rgba(234,242,255,0.90);
+                display: flex;
+                justify-content: space-between;
+                gap: 10px;
+            }}
+
+            .p2-side-note {{
+                font-size: 12px;
+                line-height: 1.5;
+                color: rgba(234,242,255,0.84);
+            }}
+
+            .p2-side-note b {{
+                color: #FFFFFF;
+            }}
+
+            @media (max-width: 1100px) {{
+                .p2-cards {{
+                    grid-template-columns: 1fr;
+                }}
+
+                .p2-bottom {{
+                    grid-template-columns: 1fr;
+                }}
+
+                .p2-pareto-grid {{
+                    grid-template-columns: 1fr;
+                }}
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="p2-wrap">
+            <div class="p2-header">
+                <div>
+                    <div class="p2-title">Resumo Inteligente • Performance & Qualidade</div>
+                    <div class="p2-sub">Período: <b>{data_ini}</b> até <b>{data_fim}</b> • Atualizado às <b>{now.strftime("%H:%M:%S")}</b></div>
+                </div>
+                <div class="p2-pill">ONE PAGE • IA OPERACIONAL</div>
+            </div>
+
+            <div class="p2-cards">
+                {''.join(card_html(c) for c in cards)}
+            </div>
+
+            <div class="p2-bottom">
+                <div class="p2-panel">
+                    <div class="p2-panel-title">Pareto • Top 3 falhas</div>
+                    <div class="p2-pareto-grid">
+                        {pareto_html("Total / Esteira", paretos["total"])}
+                        {pareto_html("Montagem Mola", paretos["mola"])}
+                        {pareto_html("Manga & PNM", paretos["manga_pnm"])}
+                    </div>
+                </div>
+
+                <div class="p2-panel">
+                    <div class="p2-panel-title">Leitura executiva</div>
+                    <div class="p2-side-note">
+                        <b>Como usar:</b><br>
+                        Gere insights automáticos e depois converse com a IA logo abaixo.<br><br>
+                        Você pode perguntar, por exemplo:<br>
+                        • qual linha está pior e por quê?<br>
+                        • quais ações atacar hoje?<br>
+                        • monte uma fala de 1 minuto para reunião<br>
+                        • compare performance x qualidade
+                    </div>
+                </div>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+    return html
+
+def page_resumo_ia():
     now = datetime.datetime.now(TZ)
     hoje = now.date()
     ini_mes = hoje.replace(day=1)
@@ -1017,7 +1401,8 @@ def page_resumo_ia():
     modo = st.sidebar.selectbox(
         "Resumo (Página 2)",
         ["Auto (>=16h = mês atual)", "Mês atual", "Usar filtro do One Page (Início/Fim)"],
-        index=0
+        index=0,
+        key="p2_modo_resumo"
     )
 
     if modo in ("Auto (>=16h = mês atual)", "Mês atual"):
@@ -1075,151 +1460,202 @@ def page_resumo_ia():
     top3_mola = pareto_top3(c_mola)
     top3_mp = pareto_top3(c_mp)
 
-    html = f"""
-    <div class="v2-wrap">
-      <div class="v2-head">
-        <div>
-          <div class="v2-title">Resumo Inteligente • Performance & Qualidade</div>
-          <div class="v2-sub">Período: <b>{data_ini}</b> até <b>{data_fim}</b> • Atualizado: <b>{now.strftime("%H:%M:%S")}</b></div>
-        </div>
-        <div class="v2-pill">ONE PAGE • MONTH MODE</div>
-      </div>
+    s_total_txt, s_total_class = _status_class(perf_total, q_total)
+    s_mola_txt, s_mola_class = _status_class(perf_mola, q_mola)
+    s_mp_txt, s_mp_class = _status_class(perf_mp, q_mp)
 
-      <div class="v2-grid">
-        <div class="v2-card">
-          <h4>Linha de Montagem / Esteira (Total)</h4>
-          <div class="v2-row">
-            <div>
-              <div class="v2-kpi">{perf_total:.1f}%</div>
-              <div class="v2-label">Performance (Produzido / Meta)</div>
-            </div>
-            <div class="v2-chip">{_chip_perf(perf_total)}</div>
-          </div>
-          <div class="v2-row">
-            <div>
-              <div class="v2-kpi">{q_total:.1f}%</div>
-              <div class="v2-label">Qualidade • Inspec.: {insp_total} • Reprov.: {rep_total}</div>
-            </div>
-            <div class="v2-chip">{_chip_qual(q_total)}</div>
-          </div>
-          <div class="v2-label">Produzido: <b>{prod_total}</b> • Meta: <b>{meta_total}</b></div>
-        </div>
+    cards = [
+        {
+            "nome": "Linha de Montagem / Esteira (Total)",
+            "produzido": prod_total,
+            "meta": meta_total,
+            "performance": perf_total,
+            "qualidade": q_total,
+            "inspecionado": insp_total,
+            "reprovados": rep_total,
+            "status_txt": s_total_txt,
+            "status_class": s_total_class,
+        },
+        {
+            "nome": "Montagem Mola",
+            "produzido": prod_mola,
+            "meta": meta_mola,
+            "performance": perf_mola,
+            "qualidade": q_mola,
+            "inspecionado": insp_mola,
+            "reprovados": rep_mola,
+            "status_txt": s_mola_txt,
+            "status_class": s_mola_class,
+        },
+        {
+            "nome": "Montagem Manga & PNM",
+            "produzido": prod_mp,
+            "meta": meta_mp,
+            "performance": perf_mp,
+            "qualidade": q_mp,
+            "inspecionado": insp_mp,
+            "reprovados": rep_mp,
+            "status_txt": s_mp_txt,
+            "status_class": s_mp_class,
+        },
+    ]
 
-        <div class="v2-card">
-          <h4>Montagem Mola</h4>
-          <div class="v2-row">
-            <div>
-              <div class="v2-kpi">{perf_mola:.1f}%</div>
-              <div class="v2-label">Performance (Produzido / Meta)</div>
-            </div>
-            <div class="v2-chip">{_chip_perf(perf_mola)}</div>
-          </div>
-          <div class="v2-row">
-            <div>
-              <div class="v2-kpi">{q_mola:.1f}%</div>
-              <div class="v2-label">Qualidade • Inspec.: {insp_mola} • Reprov.: {rep_mola}</div>
-            </div>
-            <div class="v2-chip">{_chip_qual(q_mola)}</div>
-          </div>
-          <div class="v2-label">Produzido: <b>{prod_mola}</b> • Meta: <b>{meta_mola}</b></div>
-        </div>
+    paretos = {
+        "total": top3_total,
+        "mola": top3_mola,
+        "manga_pnm": top3_mp,
+    }
 
-        <div class="v2-card">
-          <h4>Montagem Manga &amp; PNM</h4>
-          <div class="v2-row">
-            <div>
-              <div class="v2-kpi">{perf_mp:.1f}%</div>
-              <div class="v2-label">Performance (Produzido / Meta)</div>
-            </div>
-            <div class="v2-chip">{_chip_perf(perf_mp)}</div>
-          </div>
-          <div class="v2-row">
-            <div>
-              <div class="v2-kpi">{q_mp:.1f}%</div>
-              <div class="v2-label">Qualidade • Inspec.: {insp_mp} • Reprov.: {rep_mp}</div>
-            </div>
-            <div class="v2-chip">{_chip_qual(q_mp)}</div>
-          </div>
-          <div class="v2-label">Produzido: <b>{prod_mp}</b> • Meta: <b>{meta_mp}</b></div>
-        </div>
-      </div>
-
-      <div class="v2-line">
-        <div class="v2-box">
-          <h5>Pareto • Top 3 falhas (somente reprovações)</h5>
-          <ul class="v2-ul">
-            <li><b>Total/Esteira:</b> {_fmt_top3(top3_total)}</li>
-            <li><b>Mola:</b> {_fmt_top3(top3_mola)}</li>
-            <li><b>Manga &amp; PNM:</b> {_fmt_top3(top3_mp)}</li>
-          </ul>
-          <div class="v2-btn-note">Se o Pareto ficar vazio e você sabe que reprovou, me mande o nome das colunas do checklist (pra eu mapear 100%).</div>
-        </div>
-
-        <div class="v2-box">
-          <h5>Insights (IA)</h5>
-          <div class="v2-btn-note">Clique para gerar um resumo acionável (curto) para reunião.</div>
-        </div>
-      </div>
-    </div>
-    """
-
-    st.markdown(textwrap.dedent(html), unsafe_allow_html=True)
+    dashboard_html = _build_page2_html(data_ini, data_fim, now, cards, paretos)
+    components.html(dashboard_html, height=560, scrolling=False)
 
     st.write("")
-    cols = st.columns([1, 2])
-    with cols[0]:
-        gerar = st.button("Gerar Insights (IA)", use_container_width=True)
-    with cols[1]:
-        st.caption("Precisa de OPENAI_API_KEY no teste.env e pacote openai no requirements.txt.")
+    st.markdown("### Assistente IA da Operação")
 
-    if "insight_ia_mes" not in st.session_state:
-        st.session_state["insight_ia_mes"] = ""
+    col1, col2 = st.columns([1, 1])
+    with col1:
+        gerar = st.button("Gerar resumo para reunião", use_container_width=True, key="btn_gerar_insight_p2")
+    with col2:
+        limpar_chat = st.button("Limpar conversa", use_container_width=True, key="btn_limpar_chat_p2")
+
+    if "p2_chat_messages" not in st.session_state:
+        st.session_state["p2_chat_messages"] = [
+            {
+                "role": "assistant",
+                "content": "Estou pronto. Pergunte sobre performance, qualidade, Pareto, ações prioritárias ou peça uma fala para reunião."
+            }
+        ]
+
+    if limpar_chat:
+        st.session_state["p2_chat_messages"] = [
+            {
+                "role": "assistant",
+                "content": "Conversa limpa. Pode me perguntar novamente sobre os indicadores do período."
+            }
+        ]
+
+    payload = {
+        "periodo": f"{data_ini} até {data_fim}",
+        "total": {
+            "performance_pct": round(perf_total, 2),
+            "qualidade_pct": round(q_total, 2),
+            "produzido": prod_total,
+            "meta": meta_total,
+            "inspecionado": insp_total,
+            "reprovados": rep_total,
+            "pareto_top3": top3_total
+        },
+        "mola": {
+            "performance_pct": round(perf_mola, 2),
+            "qualidade_pct": round(q_mola, 2),
+            "produzido": prod_mola,
+            "meta": meta_mola,
+            "inspecionado": insp_mola,
+            "reprovados": rep_mola,
+            "pareto_top3": top3_mola
+        },
+        "manga_pnm": {
+            "performance_pct": round(perf_mp, 2),
+            "qualidade_pct": round(q_mp, 2),
+            "produzido": prod_mp,
+            "meta": meta_mp,
+            "inspecionado": insp_mp,
+            "reprovados": rep_mp,
+            "pareto_top3": top3_mp
+        },
+    }
 
     if gerar:
         if not OPENAI_AVAILABLE:
             st.error("Pacote 'openai' não instalado. Adicione em requirements.txt: openai")
         elif not openai_client:
-            st.error("OPENAI_API_KEY não configurada no teste.env (ou inválida).")
+            st.error("OPENAI_API_KEY não configurada no teste.env.")
         else:
-            payload = {
-                "periodo": f"{data_ini} até {data_fim}",
-                "total": {
-                    "performance_pct": perf_total, "qualidade_pct": q_total, "produzido": prod_total, "meta": meta_total,
-                    "inspecionado": insp_total, "reprovados": rep_total, "pareto_top3": top3_total
-                },
-                "mola": {
-                    "performance_pct": perf_mola, "qualidade_pct": q_mola, "produzido": prod_mola, "meta": meta_mola,
-                    "inspecionado": insp_mola, "reprovados": rep_mola, "pareto_top3": top3_mola
-                },
-                "manga_pnm": {
-                    "performance_pct": perf_mp, "qualidade_pct": q_mp, "produzido": prod_mp, "meta": meta_mp,
-                    "inspecionado": insp_mp, "reprovados": rep_mp, "pareto_top3": top3_mp
-                },
-            }
+            prompt_resumo = f"""
+Você é um analista sênior de produção e qualidade.
+Responda em português do Brasil, de forma objetiva, executiva e prática.
 
-            prompt = f"""
-Você é um analista de produção/qualidade.
-Faça um resumo visionário mas objetivo (máx 12 linhas), em pt-br.
-
-Regras:
-- Performance = Produzido vs Meta (mês)
-- Qualidade = Aprovação + Reprovados
-- Use o Pareto Top3 como foco
-- Entregue: (1) Diagnóstico curto (2) 3 ações práticas (3) 3 perguntas para a reunião
+Monte um resumo para reunião com esta estrutura:
+1. Diagnóstico geral do período
+2. Pior ponto de atenção
+3. 3 ações imediatas
+4. Fechamento em linguagem de gestor
 
 Dados:
 {payload}
 """.strip()
 
-            with st.spinner("Gerando insights..."):
-                resp = openai_client.responses.create(model=OPENAI_MODEL, input=prompt)
+            try:
+                with st.spinner("Gerando resumo..."):
+                    resp = openai_client.responses.create(
+                        model=OPENAI_MODEL,
+                        input=prompt_resumo
+                    )
+                txt = (getattr(resp, "output_text", "") or "").strip()
+            except Exception as e:
+                txt = f"Erro ao gerar resumo com a OpenAI: {e}"
 
-            txt = getattr(resp, "output_text", "") or ""
-            st.session_state["insight_ia_mes"] = txt.strip()
+            if txt:
+                st.session_state["p2_chat_messages"].append(
+                    {"role": "assistant", "content": txt}
+                )
 
-    if st.session_state.get("insight_ia_mes"):
-        st.markdown("### Resultado IA")
-        st.text_area("", value=st.session_state["insight_ia_mes"], height=240)
+    for msg in st.session_state["p2_chat_messages"]:
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
+
+    pergunta = st.chat_input("Pergunte algo sobre os indicadores da página 2...")
+    if pergunta:
+        st.session_state["p2_chat_messages"].append(
+            {"role": "user", "content": pergunta}
+        )
+
+        with st.chat_message("user"):
+            st.markdown(pergunta)
+
+        if not OPENAI_AVAILABLE:
+            resposta = "O pacote openai não está instalado no ambiente."
+        elif not openai_client:
+            resposta = "A OPENAI_API_KEY não foi encontrada no teste.env."
+        else:
+            system_prompt = f"""
+Você é um copiloto de produção e qualidade industrial.
+Sempre responda em português do Brasil.
+Seja direto, executivo e útil.
+Baseie-se SOMENTE nos dados abaixo.
+Quando fizer recomendação, conecte com performance, qualidade e Pareto.
+Não invente números.
+
+Base de dados do período:
+{payload}
+""".strip()
+
+            historico = [{"role": "system", "content": system_prompt}]
+            for m in st.session_state["p2_chat_messages"][-8:]:
+                historico.append({"role": m["role"], "content": m["content"]})
+
+            try:
+                with st.chat_message("assistant"):
+                    with st.spinner("Pensando..."):
+                        resp = openai_client.responses.create(
+                            model=OPENAI_MODEL,
+                            input=historico
+                        )
+                        resposta = (getattr(resp, "output_text", "") or "").strip()
+
+                    if not resposta:
+                        resposta = "Não consegui gerar resposta desta vez."
+
+                    st.markdown(resposta)
+            except Exception as e:
+                resposta = f"Erro ao consultar a OpenAI: {e}"
+                with st.chat_message("assistant"):
+                    st.markdown(resposta)
+
+            st.session_state["p2_chat_messages"].append(
+                {"role": "assistant", "content": resposta}
+            )
+
 # ==============================
 # MAIN
 # ==============================
@@ -1233,7 +1669,7 @@ def main():
     hoje = now.date()
 
     st.sidebar.markdown("## Menu")
-    pagina = st.sidebar.radio("Página", ["One Page (TV)", "Resumo Mensal + IA"], index=0)
+    pagina = st.sidebar.radio("Página", ["One Page (TV)", "Resumo Inteligente + IA"], index=0)
 
     st.sidebar.markdown("---")
     st.sidebar.markdown("### Filtro (Data) — One Page")
@@ -1256,7 +1692,7 @@ def main():
         page_onepage(data_inicio, data_fim)
     else:
         st.markdown(
-            f"<div class='op-sub'>Modo: <b>Resumo Mensal + IA</b></div>",
+            "<div class='op-sub'>Modo: <b>Resumo Inteligente + IA</b></div>",
             unsafe_allow_html=True
         )
         page_resumo_ia()
