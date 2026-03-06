@@ -12,6 +12,7 @@ import google.generativeai as genai
 import json
 import calendar
 import holidays
+import re
 from streamlit_mic_recorder import speech_to_text
 
 # OpenAI
