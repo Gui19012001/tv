@@ -1,0 +1,16 @@
+# arquivos de ambiente
+.env
+.env.*
+teste.env
+
+# python
+__pycache__/
+*.pyc
+*.pyo
+
+# logs
+*.log
+
+# sistema
+.DS_Store
+Thumbs.db
