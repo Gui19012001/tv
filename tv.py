@@ -1,7 +1,6 @@
 import os
 import datetime
 from pathlib import Path
-
 import pandas as pd
 import pytz
 import streamlit as st
@@ -9,6 +8,7 @@ import streamlit.components.v1 as components
 from dotenv import load_dotenv
 from supabase import create_client
 import textwrap
+import google.generativeai as genai
 
 # OpenAI
 try:
