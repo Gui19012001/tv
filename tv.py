@@ -81,7 +81,7 @@ def aplicar_css_app():
             padding-bottom: 0.8rem;
         }
 
-        /* ✅ NÃO esconder o toolbar inteiro (isso faz o botão do sidebar sumir depois do carregamento) */
+        /* ✅ NÃO esconder o toolbar inteiro */
         div[data-testid="stToolbar"]{
             visibility: visible !important;
             height: auto !important;
@@ -92,14 +92,14 @@ def aplicar_css_app():
             background: transparent !important;
         }
 
-        /* ✅ Se existir área de ações do toolbar, esconda SÓ ela (não mexe no botão do sidebar) */
+        /* esconder apenas ações do toolbar */
         div[data-testid="stToolbar"] [data-testid="stToolbarActions"],
         div[data-testid="stToolbar"] [data-testid="stToolbarActionItems"]{
             opacity: 0 !important;
             pointer-events: none !important;
         }
 
-        /* Header não pode ser removido (senão perde controles) */
+        /* Header */
         header[data-testid="stHeader"]{
             background: transparent !important;
             border: none !important;
@@ -108,7 +108,7 @@ def aplicar_css_app():
             z-index: 999980 !important;
         }
 
-        /* ✅ Botão do sidebar: força aparecer e ficar clicável (vários ids/labels, pois muda por versão) */
+        /* botão sidebar */
         button[data-testid="stSidebarCollapseButton"],
         button[data-testid="baseButton-headerNoPadding"],
         button[aria-label="Open sidebar"],
@@ -132,16 +132,14 @@ def aplicar_css_app():
             backdrop-filter: blur(6px) !important;
         }
 
-        /* ✅ garante que qualquer overlay não “roube” o clique do botão */
         header[data-testid="stHeader"] *{
             pointer-events: auto;
         }
 
-        /* Reduz “piscadas” */
         div[data-testid="stStatusWidget"] {display:none !important;}
         div[data-testid="stDecoration"] {display:none !important;}
 
-        /* Fundo branco clean */
+        /* fundo app */
         .stApp { background: #F6F7FB; }
 
         .op-title {
@@ -151,18 +149,22 @@ def aplicar_css_app():
             letter-spacing: 0.4px;
             margin: 2px 0 4px 0;
         }
+
         .op-sub {
             color: rgba(11,27,51,0.70);
             margin-bottom: 10px;
         }
 
+        /* =========================
+           SIDEBAR (COR AJUSTADA)
+           ========================= */
         section[data-testid="stSidebar"] {
-            background: #FFFFFF;
-            border-right: 1px solid rgba(11,27,51,0.10);
+            background: linear-gradient(180deg, #071124 0%, #0B1B33 60%, #0A2747 100%);
+            border-right: 1px solid rgba(255,255,255,0.08);
         }
 
         /* ==============================
-           PÁGINA 2 (VISIONÁRIA) - CSS
+           PÁGINA 2 (VISIONÁRIA)
         ============================== */
         .v2-wrap{
             border-radius: 22px;
@@ -175,6 +177,7 @@ def aplicar_css_app():
             box-shadow: 0 18px 40px rgba(0,0,0,0.18);
             color: #F3F7FF;
         }
+
         .v2-head{
             display:flex;
             justify-content:space-between;
@@ -182,6 +185,7 @@ def aplicar_css_app():
             gap: 12px;
             margin-bottom: 12px;
         }
+
         .v2-title{
             font-size: 16px;
             font-weight: 950;
@@ -189,11 +193,13 @@ def aplicar_css_app():
             text-transform: uppercase;
             color: rgba(243,247,255,0.92);
         }
+
         .v2-sub{
             font-size: 12px;
             color: rgba(243,247,255,0.70);
             margin-top: 4px;
         }
+
         .v2-pill{
             font-size: 11px;
             font-weight: 950;
@@ -204,20 +210,23 @@ def aplicar_css_app():
             color: rgba(243,247,255,0.88);
             white-space:nowrap;
         }
+
         .v2-grid{
             display:grid;
             grid-template-columns: repeat(3, minmax(260px, 1fr));
             gap: 14px;
             width: 100%;
         }
+
         .v2-card{
             border-radius: 18px;
-            padding: 14px 14px 12px 14px;
+            padding: 14px;
             background: rgba(255,255,255,0.06);
             border: 1px solid rgba(255,255,255,0.10);
             box-shadow: inset 0 1px 0 rgba(255,255,255,0.08);
             min-height: 168px;
         }
+
         .v2-card h4{
             margin: 0 0 10px 0;
             font-size: 12px;
@@ -226,6 +235,7 @@ def aplicar_css_app():
             color: rgba(243,247,255,0.88);
             text-transform: uppercase;
         }
+
         .v2-row{
             display:flex;
             justify-content:space-between;
@@ -233,17 +243,20 @@ def aplicar_css_app():
             gap: 10px;
             margin: 8px 0;
         }
+
         .v2-kpi{
             font-size: 22px;
             font-weight: 950;
             color: rgba(243,247,255,0.95);
             line-height: 1;
         }
+
         .v2-label{
             font-size: 11px;
             color: rgba(243,247,255,0.72);
             margin-top: 4px;
         }
+
         .v2-chip{
             font-size: 11px;
             font-weight: 900;
@@ -254,6 +267,7 @@ def aplicar_css_app():
             color: rgba(243,247,255,0.85);
             white-space:nowrap;
         }
+
         .v2-line{
             margin-top: 14px;
             display:grid;
@@ -261,12 +275,14 @@ def aplicar_css_app():
             gap: 14px;
             width: 100%;
         }
+
         .v2-box{
             border-radius: 18px;
             padding: 14px;
             background: rgba(255,255,255,0.06);
             border: 1px solid rgba(255,255,255,0.10);
         }
+
         .v2-box h5{
             margin: 0 0 10px 0;
             font-size: 12px;
@@ -275,21 +291,25 @@ def aplicar_css_app():
             color: rgba(243,247,255,0.88);
             text-transform: uppercase;
         }
+
         .v2-ul{
             margin:0;
             padding-left: 16px;
             color: rgba(243,247,255,0.90);
         }
+
         .v2-ul li{
             margin: 8px 0;
             font-size: 12px;
         }
+
         .v2-ia{
             font-size: 12px;
             color: rgba(243,247,255,0.92);
             white-space: pre-wrap;
             line-height: 1.35;
         }
+
         .v2-btn-note{
             margin-top: 10px;
             font-size: 11px;
@@ -300,9 +320,11 @@ def aplicar_css_app():
             .v2-grid{ grid-template-columns: repeat(2, minmax(260px, 1fr)); }
             .v2-line{ grid-template-columns: 1fr; }
         }
+
         @media (max-width: 780px){
             .v2-grid{ grid-template-columns: 1fr; }
         }
+
         </style>
         """,
         unsafe_allow_html=True
