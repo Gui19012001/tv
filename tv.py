@@ -38,23 +38,41 @@ except ImportError:
 # ==============================
 # ENV / SUPABASE / OPENAI
 # ==============================
-env_path = Path(__file__).parent / "teste.env"
-load_dotenv(dotenv_path=env_path)
 
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+# tenta carregar .env local (para rodar no seu PC)
+env_path = Path(__file__).parent / "teste.env"
+if env_path.exists():
+    load_dotenv(dotenv_path=env_path)
+
+# --------------------------------
+# SUPABASE
+# --------------------------------
+SUPABASE_URL = os.getenv("SUPABASE_URL") or st.secrets.get("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY") or st.secrets.get("SUPABASE_KEY")
+
 if not SUPABASE_URL or not SUPABASE_KEY:
-    raise RuntimeError("SUPABASE_URL / SUPABASE_KEY não encontrados no teste.env")
+    raise RuntimeError("SUPABASE_URL / SUPABASE_KEY não encontrados (env ou secrets).")
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+# --------------------------------
+# TIMEZONE
+# --------------------------------
 TZ = pytz.timezone("America/Sao_Paulo")
 
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4.1").strip()
+# --------------------------------
+# OPENAI
+# --------------------------------
+OPENAI_API_KEY = (os.getenv("OPENAI_API_KEY") or st.secrets.get("OPENAI_API_KEY", "")).strip()
+OPENAI_MODEL = (os.getenv("OPENAI_MODEL") or st.secrets.get("OPENAI_MODEL", "gpt-4.1")).strip()
 
 openai_client = None
 if OPENAI_AVAILABLE and OPENAI_API_KEY:
-    openai_client = OpenAI(api_key=OPENAI_API_KEY)
+    try:
+        openai_client = OpenAI(api_key=OPENAI_API_KEY)
+    except Exception as e:
+        openai_client = None
+        print("Erro ao inicializar OpenAI:", e)
 
 # ==============================
 # CSS APP + GARANTE SIDEBAR EM TODAS AS PÁGINAS
