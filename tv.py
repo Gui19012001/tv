@@ -60,7 +60,7 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 TZ = pytz.timezone("America/Sao_Paulo")
 
 GEMINI_API_KEY = (os.getenv("GEMINI_API_KEY") or st.secrets.get("GEMINI_API_KEY", "")).strip()
-GEMINI_MODEL = (os.getenv("GEMINI_MODEL") or st.secrets.get("GEMINI_MODEL", "gemini-2.0-flash")).strip()
+GEMINI_MODEL = (os.getenv("GEMINI_MODEL") or st.secrets.get("GEMINI_MODEL", "gemini-2.5-flash")).strip()
 
 GEMINI_AVAILABLE = bool(GEMINI_API_KEY)
 if GEMINI_AVAILABLE:
