@@ -1660,22 +1660,94 @@ def _gemini_generate_text(prompt: str) -> str:
     except Exception as e:
         return f"Erro ao consultar Gemini: {e}"
 
+def limpar_texto_para_fala(texto: str) -> str:
+    if not texto:
+        return ""
+
+    txt = str(texto)
+
+    txt = re.sub(r"\*\*(.*?)\*\*", r"\1", txt)
+    txt = re.sub(r"\*(.*?)\*", r"\1", txt)
+    txt = re.sub(r"__(.*?)__", r"\1", txt)
+    txt = re.sub(r"_(.*?)_", r"\1", txt)
+    txt = re.sub(r"`(.*?)`", r"\1", txt)
+
+    txt = re.sub(r"^\s*#{1,6}\s*", "", txt, flags=re.MULTILINE)
+    txt = re.sub(r"^\s*[-•]\s*", "", txt, flags=re.MULTILINE)
+    txt = re.sub(r"^\s*\d+\.\s*", "", txt, flags=re.MULTILINE)
+
+    txt = txt.replace("%", " por cento")
+    txt = txt.replace("&", " e ")
+    txt = txt.replace("/", " barra ")
+
+    txt = re.sub(r"\s+", " ", txt).strip()
+    return txt
+
 def falar_no_navegador(texto: str):
-    texto_js = json.dumps(texto)
+    texto_limpo = limpar_texto_para_fala(texto)
+    texto_js = json.dumps(texto_limpo)
+
     html_js = f"""
     <script>
       const texto = {texto_js};
-      const synth = window.speechSynthesis;
-      if (synth) {{
+
+      function falar() {{
+        const synth = window.speechSynthesis;
+        if (!synth || !texto) return;
+
         synth.cancel();
+
         const u = new SpeechSynthesisUtterance(texto);
         u.lang = "pt-BR";
-        u.rate = 1.0;
+        u.rate = 1.03;
         u.pitch = 1.0;
-        const voces = synth.getVoices ? synth.getVoices() : [];
-        const vozPT = voces.find(v => (v.lang || "").toLowerCase().startsWith("pt"));
-        if (vozPT) u.voice = vozPT;
+        u.volume = 1.0;
+
+        const voices = synth.getVoices() || [];
+
+        const preferidas = [
+          "Microsoft Francisca",
+          "Microsoft Antonio",
+          "Francisca",
+          "Antonio",
+          "Google português do Brasil",
+          "Google português",
+          "Luciana",
+          "Felipe"
+        ];
+
+        let vozEscolhida = null;
+
+        for (const nome of preferidas) {{
+          vozEscolhida = voices.find(v =>
+            (v.name || "").toLowerCase().includes(nome.toLowerCase())
+          );
+          if (vozEscolhida) break;
+        }}
+
+        if (!vozEscolhida) {{
+          vozEscolhida = voices.find(v =>
+            (v.lang || "").toLowerCase().startsWith("pt-br")
+          );
+        }}
+
+        if (!vozEscolhida) {{
+          vozEscolhida = voices.find(v =>
+            (v.lang || "").toLowerCase().startsWith("pt")
+          );
+        }}
+
+        if (vozEscolhida) {{
+          u.voice = vozEscolhida;
+        }}
+
         synth.speak(u);
+      }}
+
+      if (speechSynthesis.getVoices().length === 0) {{
+        speechSynthesis.onvoiceschanged = falar;
+      }} else {{
+        falar();
       }}
     </script>
     """
@@ -1939,12 +2011,13 @@ def page_resumo_ia():
             prompt_resumo = f"""
 Você é um analista sênior de produção e qualidade.
 Responda em português do Brasil, de forma objetiva, executiva e prática.
+Escreva em texto limpo, sem markdown, sem asteriscos e sem bullets decorativos.
 
 Monte um resumo para reunião com esta estrutura:
-1. Diagnóstico geral do período
-2. Pior ponto de atenção
-3. 3 ações imediatas
-4. Fechamento em linguagem de gestor
+Diagnóstico geral do período.
+Pior ponto de atenção.
+Três ações imediatas.
+Fechamento em linguagem de gestor.
 
 Dados:
 {json.dumps(payload, ensure_ascii=False, indent=2)}
@@ -1986,6 +2059,7 @@ Seja direto, executivo e útil.
 Baseie-se SOMENTE nos dados abaixo.
 Quando fizer recomendação, conecte com performance, qualidade e Pareto.
 Não invente números.
+Responda em texto limpo, sem markdown, sem asteriscos e sem formatação decorativa.
 
 Base de dados do período:
 {json.dumps(payload, ensure_ascii=False, indent=2)}
@@ -2176,6 +2250,12 @@ SEU PAPEL:
 - Se a pergunta exigir internet, notícia atual, legislação detalhada ou algo não presente no payload/contexto, diga com clareza que não está no painel.
 - Seja direto, útil e com linguagem executiva.
 - Não invente números.
+- Responda como fala humana, natural, curta e fluida.
+- Não use markdown.
+- Não use asteriscos.
+- Não use listas decorativas.
+- Evite títulos artificiais.
+- Fale como um assistente premium, estilo navegação guiada.
 
 CONTEXTO DO PAINEL:
 {json.dumps(payload, ensure_ascii=False, indent=2)}
