@@ -6,4 +6,3 @@ supabase
 python-dotenv
 streamlit-autorefresh
 openai
-google-generativeai
