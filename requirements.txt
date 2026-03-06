@@ -6,3 +6,4 @@ supabase
 python-dotenv
 streamlit-autorefresh
 openai
+google-generativeai>=0.8.0
